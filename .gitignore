@@ -1,1 +1,15 @@
+# 忽略整个模板备份文件夹
 xtuthesis-master/
+
+# 忽略所有 LaTeX 编译产生的垃圾（无论在哪个文件夹）
+# *.aux
+# *.log
+# *.toc
+# *.out
+# *.synctex.gz
+# *.thm
+# *.fdb_latexmk
+# *.fls
+# *.gz
+# *.pdf
+# *.tex
