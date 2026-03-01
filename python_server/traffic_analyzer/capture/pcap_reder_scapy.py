@@ -1,16 +1,25 @@
-from scapy.all import *
+from scapy.all import rdpcap, PcapReader
+from pathlib import Path
 
-pkts = rdpcap('sampledata.pcap')
+base_path = Path(__file__).resolve()
+# 构建指向 pcap 文件的路径
+pcap_file = base_path.parent.parent / 'data' / 'all-xena-pcap' / 'ARP_Spoofing.pcap'
 
-tcp_count = 0
-udp_count = 0
+print(f"目标文件路径: {pcap_file}")
+print(f"目标文件是否存在: {pcap_file.exists()}")
 
-for pkt in pkts:
-    if pkt.haslayer(TCP):
-        tcp_count += 1
-    elif pkt.haslayer(UDP):
-        udp_count += 1
+if pcap_file.exists():
+    with PcapReader(str(pcap_file)) as reader:
+        count = 0
+        for pkt in reader:
+            count+=1
+            if count<=5:
+                print(f"--- Packet {count} ---")
+                pkt.show()
+            else:
+                print(pkt.summary())
 
-print("Total number of packets in the pcap file:", len(pkts))
-print("Total number of tcp packets:", tcp_count)
-print("Total number of udp packets:", udp_count)
+            if count>=100:
+                break
+else:
+    print("文件不存在！")
