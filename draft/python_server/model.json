@@ -1,0 +1,37 @@
+{
+    "packet_id": 1,
+    "timestamp": "...",
+    "layers": [
+      {
+        "name": "Ethernet",
+        "fields": {
+          "src": "...",
+          "dst": "..."
+        }
+      },
+      {
+        "name": "IP",
+        "fields": {
+          "src": "...",
+          "dst": "...",
+          "ttl": 64
+        }
+      },
+      {
+        "name": "TCP",
+        "fields": {
+          "sport": 443,
+          "dport": 52341,
+          "flags": "S"
+        }
+      },
+      {
+        "name": "HTTP",
+        "fields": {
+          "method": "GET",
+          "host": "example.com",
+          "path": "/index"
+        }
+      }
+    ]
+  }
