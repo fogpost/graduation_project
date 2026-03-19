@@ -1,11 +1,18 @@
-from scapy.all import rdpcap
+from pathlib import Path
+from typing import List
 
-packets = []
+from scapy.all import Packet, rdpcap
 
-def load_pcap(file_path):
-    global packets
+packets: List[Packet] = []
 
-    packets[:] = rdpcap(str(file_path))  # 保证修改原列表对象
-    print("加载数据包数量:", len(packets))
-    print(packets[0].summary())
+
+def load_pcap(file_path: str | Path) -> int:
+    pcap_path = Path(file_path)
+    if not pcap_path.exists():
+        raise FileNotFoundError(f"PCAP file not found: {pcap_path}")
+    if pcap_path.is_dir():
+        raise IsADirectoryError(f"Expected a file path, got directory: {pcap_path}")
+
+    loaded_packets = rdpcap(str(pcap_path))
+    packets[:] = loaded_packets
     return len(packets)
