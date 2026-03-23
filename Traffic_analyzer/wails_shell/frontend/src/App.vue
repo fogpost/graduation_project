@@ -45,7 +45,6 @@ const localTerminalName = ref("");
 const captureInterfaces = ref([]);
 const selectedCaptureIfaceIndex = ref(-1);
 const loadingIfaces = ref(false);
-const hasDesktopBridge = computed(() => Boolean(window?.go?.main?.App));
 
 const hexBytes = computed(() => (detail.value?.raw_hex?.match(/.{1,2}/g) || []));
 const hexRows = computed(() => {
@@ -58,7 +57,6 @@ const activeTerminal = computed(() => terminals.value.find((t) => t.id === activ
 const selectedIfaceLabel = computed(() => captureInterfaces.value.find((i) => i.index === Number(selectedCaptureIfaceIndex.value))?.display || "自动选择");
 
 async function callApp(method, ...args) {
-  if (!hasDesktopBridge.value) throw new Error("当前为 Web 模式，桌面桥接不可用");
   const fn = window?.go?.main?.App?.[method];
   if (!fn) throw new Error(`Wails binding missing: ${method}`);
   return fn(...args);
@@ -82,10 +80,6 @@ async function locateAlertPacket(a) {
 }
 
 async function refreshCaptureInterfaces() {
-  if (!hasDesktopBridge.value) {
-    captureInterfaces.value = [];
-    return;
-  }
   loadingIfaces.value = true;
   try {
     const items = await callApp("ListCaptureInterfaces");
@@ -97,11 +91,10 @@ async function refreshCaptureInterfaces() {
   } catch (e) { actionMessage.value = `网卡列表获取失败: ${e}`; } finally { loadingIfaces.value = false; }
 }
 
-async function refreshServiceStatus() { if (!hasDesktopBridge.value) return; try { serviceStatus.value = await callApp("ServiceStatus"); } catch (e) { actionMessage.value = `状态获取失败: ${e}`; } }
-async function startEmbeddedStack() { if (!hasDesktopBridge.value) { actionMessage.value = "Web 模式无需内置启动，请使用脚本启动后端/抓包"; return; } try { serviceStatus.value = { ...serviceStatus.value, ...(await callApp("StartEmbeddedStack")) }; } catch (e) { actionMessage.value = `启动失败: ${e}`; } }
-async function stopEmbeddedStack() { if (!hasDesktopBridge.value) return; try { serviceStatus.value = await callApp("StopEmbeddedStack"); } catch (e) { actionMessage.value = `停止失败: ${e}`; } }
+async function refreshServiceStatus() { try { serviceStatus.value = await callApp("ServiceStatus"); } catch (e) { actionMessage.value = `状态获取失败: ${e}`; } }
+async function startEmbeddedStack() { try { serviceStatus.value = { ...serviceStatus.value, ...(await callApp("StartEmbeddedStack")) }; } catch (e) { actionMessage.value = `启动失败: ${e}`; } }
+async function stopEmbeddedStack() { try { serviceStatus.value = await callApp("StopEmbeddedStack"); } catch (e) { actionMessage.value = `停止失败: ${e}`; } }
 async function startCapture() {
-  if (!hasDesktopBridge.value) { actionMessage.value = "Web 模式请通过 scripts/start_go_capture.ps1 启动抓包"; return; }
   try {
     const idx = Number(selectedCaptureIfaceIndex.value);
     if (Number.isInteger(idx) && idx >= 0) await callApp("StartCaptureWithInterface", idx, "");
@@ -110,7 +103,7 @@ async function startCapture() {
     actionMessage.value = `抓包启动: ${selectedIfaceLabel.value}`;
   } catch (e) { actionMessage.value = `抓包启动失败: ${e}`; }
 }
-async function stopCapture() { if (!hasDesktopBridge.value) return; try { await callApp("StopCapture"); await refreshServiceStatus(); } catch (e) { actionMessage.value = `抓包停止失败: ${e}`; } }
+async function stopCapture() { try { await callApp("StopCapture"); await refreshServiceStatus(); } catch (e) { actionMessage.value = `抓包停止失败: ${e}`; } }
 
 async function refreshAnalysis() { try { const r = await fetch(`${API_BASE}/analysis/report`); if (!r.ok) throw new Error(`HTTP ${r.status}`); report.value = await r.json(); } catch (e) { actionMessage.value = `检测刷新失败: ${e}`; } }
 async function refreshFileCatalog(s = false) { if (!s) fileError.value = ""; try { const r = await fetch(`${API_BASE}/pcap-files`); if (!r.ok) throw new Error(`HTTP ${r.status}`); const d = await r.json(); fileItems.value = d.items || []; currentFile.value = d.current_file || ""; } catch (e) { fileError.value = `加载文件列表失败: ${e}`; } }
@@ -168,7 +161,6 @@ async function onImportFileChange(e) {
 function nextUnparsedLiveFile() { return liveFiles.value.find((f) => !parsedLiveFiles.has(f.relative_path)); }
 
 async function refreshTerminals() {
-  if (!hasDesktopBridge.value) return;
   try {
     terminals.value = await callApp("ListTerminals");
     if (!terminals.value.find((t) => t.id === activeTerminalId.value) && terminals.value.length) activeTerminalId.value = terminals.value[0].id;
@@ -176,7 +168,6 @@ async function refreshTerminals() {
 }
 
 async function refreshTerminalLogs() {
-  if (!hasDesktopBridge.value) return;
   if (!activeTerminalId.value) return;
   try {
     terminalLogs.value = await callApp("GetTerminalLogsByID", activeTerminalId.value, 600);
@@ -184,18 +175,16 @@ async function refreshTerminalLogs() {
   } catch (e) { actionMessage.value = `终端日志获取失败: ${e}`; }
 }
 
-async function createLocalTerminal() { if (!hasDesktopBridge.value) return; try { const i = await callApp("CreateLocalTerminal", localTerminalName.value.trim()); localTerminalName.value = ""; await refreshTerminals(); activeTerminalId.value = i.id; } catch (e) { actionMessage.value = `创建本地终端失败: ${e}`; } }
+async function createLocalTerminal() { try { const i = await callApp("CreateLocalTerminal", localTerminalName.value.trim()); localTerminalName.value = ""; await refreshTerminals(); activeTerminalId.value = i.id; } catch (e) { actionMessage.value = `创建本地终端失败: ${e}`; } }
 async function createSshTerminal() {
-  if (!hasDesktopBridge.value) return;
   try {
     const i = await callApp("CreateSSHTerminal", sshHost.value.trim(), Number(sshPort.value || 22), sshUser.value.trim(), sshPass.value, sshName.value.trim());
     sshPass.value = ""; await refreshTerminals(); activeTerminalId.value = i.id;
   } catch (e) { actionMessage.value = `创建SSH终端失败: ${e}`; }
 }
-async function closeActiveTerminal() { if (!hasDesktopBridge.value || !activeTerminalId.value || activeTerminalId.value === "local-default") return; await callApp("CloseTerminal", activeTerminalId.value); await refreshTerminals(); }
-async function clearActiveTerminalLogs() { if (!hasDesktopBridge.value || !activeTerminalId.value) return; await callApp("ClearTerminalLogsByID", activeTerminalId.value); terminalLogs.value = []; }
+async function closeActiveTerminal() { if (!activeTerminalId.value || activeTerminalId.value === "local-default") return; await callApp("CloseTerminal", activeTerminalId.value); await refreshTerminals(); }
+async function clearActiveTerminalLogs() { if (!activeTerminalId.value) return; await callApp("ClearTerminalLogsByID", activeTerminalId.value); terminalLogs.value = []; }
 async function executeTerminalCommand() {
-  if (!hasDesktopBridge.value) return;
   const cmd = terminalInput.value;
   if (!cmd.trim() || !activeTerminalId.value) return;
   terminalInput.value = "";
@@ -214,19 +203,8 @@ function startPolling() { stopPolling(); pollTimer = setInterval(() => { polling
 function stopPolling() { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } }
 
 async function init() {
-  if (hasDesktopBridge.value) {
-    await startEmbeddedStack();
-    await refreshCaptureInterfaces();
-    await refreshServiceStatus();
-    await refreshTerminals();
-    await refreshTerminalLogs();
-  } else {
-    actionMessage.value = "Web 模式: 已启用分析面板，终端与网卡控制仅桌面版可用";
-  }
-  await refreshFileCatalog();
-  await loadPackets();
-  await refreshAnalysis();
-  startPolling();
+  await startEmbeddedStack(); await refreshCaptureInterfaces(); await refreshFileCatalog(); await loadPackets(); await refreshAnalysis();
+  await refreshServiceStatus(); await refreshTerminals(); await refreshTerminalLogs(); startPolling();
 }
 
 watch(activeTerminalId, () => refreshTerminalLogs());
@@ -238,7 +216,7 @@ onUnmounted(() => stopPolling());
   <div class="app">
     <header class="header">
       <div class="title" @click="toggleTitleMenu">Traffic Analyzer Desktop</div>
-      <div class="title-menu" v-if="titleMenuOpen"><button @click="toggleTerminal" :disabled="!hasDesktopBridge">终端中心</button></div>
+      <div class="title-menu" v-if="titleMenuOpen"><button @click="toggleTerminal">终端中心</button></div>
       <div class="toolbar">
         <button @click="startEmbeddedStack">启动后端</button><button class="danger" @click="stopEmbeddedStack">停止后端</button>
         <button @click="startCapture">启动抓包</button><button class="danger" @click="stopCapture">停止抓包</button><button @click="refreshAnalysis">刷新检测</button>
@@ -261,7 +239,7 @@ onUnmounted(() => stopPolling());
 
         <section class="card">
           <h3>抓包网卡</h3>
-          <div class="row"><select v-model.number="selectedCaptureIfaceIndex" :disabled="!hasDesktopBridge"><option :value="-1">自动选择</option><option v-for="i in captureInterfaces" :key="i.index" :value="i.index">{{ i.display }}</option></select><button @click="refreshCaptureInterfaces" :disabled="loadingIfaces || !hasDesktopBridge">刷新</button></div>
+          <div class="row"><select v-model.number="selectedCaptureIfaceIndex"><option :value="-1">自动选择</option><option v-for="i in captureInterfaces" :key="i.index" :value="i.index">{{ i.display }}</option></select><button @click="refreshCaptureInterfaces" :disabled="loadingIfaces">刷新</button></div>
           <div class="hint" :title="selectedIfaceLabel">当前: {{ selectedIfaceLabel }}</div>
         </section>
 
@@ -300,7 +278,7 @@ onUnmounted(() => stopPolling());
       </section>
     </main>
 
-    <section class="terminal-center" v-if="terminalVisible && hasDesktopBridge">
+    <section class="terminal-center" v-if="terminalVisible">
       <div class="terminal-header"><b>终端中心</b><span><button @click="refreshTerminals">刷新</button><button class="danger" @click="terminalVisible=false">关闭</button></span></div>
       <div class="terminal-layout">
         <aside class="terminal-side">

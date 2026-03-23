@@ -43,7 +43,7 @@ pip install -r requirements.txt
 .\scripts\start_frontend.ps1
 ```
 
-前端默认地址：`http://127.0.0.1:5173`
+前端默认地址：`http://127.0.0.1:34115`（Wails 标准前端工程开发服务）
 
 ### 4) 一键同时启动（后端+前端）
 
@@ -51,12 +51,42 @@ pip install -r requirements.txt
 .\scripts\start_all.ps1
 ```
 
+### 5) 启动 Go 实时抓包（可选）
+
+```powershell
+.\scripts\start_go_capture.ps1
+```
+
+或与前后端一起启动：
+
+```powershell
+.\scripts\start_all.ps1 -WithCapture
+```
+
+### 6) 启动 Wails 桌面端（推荐）
+
+```powershell
+.\scripts\start_wails_shell.ps1
+```
+
+如需手动指定路径（打包后推荐）：
+- `TA_PROJECT_ROOT`：仓库根目录
+- `TRAFFIC_ANALYZER_DATA_DIR`：数据目录
+- `TA_PYTHON`：Python 可执行路径
+
 ## API 概览
 
 - `GET /health`：健康检查
 - `GET|POST /load?file_path=...`：加载 pcap 文件
+- `GET /pcap-files`：获取 `Traffic_analyzer/data` 下可解析文件列表（含 size/modified_at）
+- `POST /load-data-file?relative_path=...`：按相对路径加载 `data` 下文件
+- `POST /load-next-data-file`：按列表顺序加载下一个文件
+- `POST /upload-pcap`：上传并解析 pcap 文件
 - `GET /packets?offset=0&limit=200`：分页获取包列表
 - `GET /packet/{packet_id}`：查看单包分层字段
+- `GET /packet/{packet_id}/detail`：查看单包详情（层级字段 + raw hex + 偏移）
+- `GET /analysis/rules`：规则库列表
+- `GET /analysis/report`：特征统计 + 可解释检测告警列表
 
 ## 说明
 

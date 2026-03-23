@@ -1,40 +1,60 @@
 # Traffic_analyzer
 
-本目录是项目当前主线实现（可直接运行）。
+当前主线实现目录（后端 API + 前端页面 + Go 实时抓包 + Wails 壳）。
 
-## 技术栈
+## 目录
 
-- 后端：FastAPI + Scapy
-- 前端：Vue 3 + Vite
+- `main.py`：FastAPI 入口
+- `core/`：pcap 加载、文件目录索引、包详情解析
+- `wails_shell/frontend/`：Wails 标准前端工程（Vue + Vite）
+- `traffic-ui/`：历史前端目录（已迁移，保留参考）
+- `go_capture/`：Go 实时抓包模块（输出到 `data/live`）
+- `wails_shell/`：Wails 桌面端（内置后端，不再 iframe）
+- `data/`：样本数据与抓包输出
 
-## 后端结构
+## 后端接口
 
-- `main.py`：API 入口
-- `core/pcap_loader.py`：pcap 加载
-- `core/packet_list.py`：包列表与分页
-- `core/list_packet_parser.py`：单包分层解析
+- `GET /health`
+- `GET|POST /load?file_path=...`
+- `GET /pcap-files`
+- `POST /load-data-file?relative_path=...`
+- `POST /load-next-data-file`
+- `POST /upload-pcap`
+- `GET /packets?offset=0&limit=200`
+- `GET /packet/{packet_id}`
+- `GET /packet/{packet_id}/detail`
+- `GET /analysis/rules`
+- `GET /analysis/report`
 
-## 运行后端
+## 前端功能
 
-在仓库根目录执行：
+- 刷新包列表
+- 导包（上传并解析）
+- 文件解析列表（加载 `data` 下任意文件）
+- 顺序解析下一个文件
+- 自动刷新文件列表
+- 自动轮询解析 `data/live` 新抓包文件
+- 包详情固定为：左侧解析数据、右侧 Hex 联动高亮
+
+## Go 抓包模块
 
 ```powershell
-.\.venv\Scripts\Activate.ps1
-python -m uvicorn Traffic_analyzer.main:app --reload --host 127.0.0.1 --port 8000
+cd Traffic_analyzer\go_capture
+go run .
 ```
 
-## 前端开发
+常用参数：
 
 ```powershell
-cd Traffic_analyzer\traffic-ui
-npm install
-npm run dev
+go run . -list-ifaces
+go run . -iface-index 3 -count 1000 -timeout 120
+go run . -out "..\data\live\manual_capture.pcap"
 ```
 
-## 已完成的稳定性改造（第一阶段）
+## Wails 轻量壳
 
-- 启动加载 pcap 路径可配置
-- `packet_id` 越界返回 404
-- `/packets` 支持 `offset + limit` 分页
-- 新增 `/health` 接口
-- CORS 由全开放调整为本地开发源
+```powershell
+.\scripts\start_wails_shell.ps1
+```
+
+详细说明见：`Traffic_analyzer/wails_shell/README.md`

@@ -13,3 +13,17 @@ python_test/
 # *.gz
 # *.pdf
 # *.tex
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Go build artifacts
+*.exe
+*.out
+
+# Node modules
+node_modules/
+Traffic_analyzer/traffic-ui/node_modules/
+Traffic_analyzer/wails_shell/frontend/node_modules/
+.gocache
