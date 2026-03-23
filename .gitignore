@@ -26,4 +26,5 @@ __pycache__/
 node_modules/
 Traffic_analyzer/traffic-ui/node_modules/
 Traffic_analyzer/wails_shell/frontend/node_modules/
+
 .gocache
