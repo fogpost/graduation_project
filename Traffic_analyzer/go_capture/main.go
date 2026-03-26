@@ -1,17 +1,21 @@
 package main
 
 import (
+	"compress/gzip"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/google/gopacket"
+	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
 	"github.com/google/gopacket/pcapgo"
 )
@@ -119,6 +123,83 @@ func ensureParentDir(path string) error {
 	return os.MkdirAll(parent, 0o755)
 }
 
+func shardPath(basePath string, idx int) string {
+	ext := filepath.Ext(basePath)
+	base := strings.TrimSuffix(basePath, ext)
+	return fmt.Sprintf("%s_part%03d%s", base, idx, ext)
+}
+
+func createShardWriter(path string, snaplen int, linkType layers.LinkType) (*os.File, *pcapgo.Writer, error) {
+	outFile, err := os.Create(path)
+	if err != nil {
+		return nil, nil, err
+	}
+	writer := pcapgo.NewWriter(outFile)
+	if err := writer.WriteFileHeader(uint32(snaplen), linkType); err != nil {
+		_ = outFile.Close()
+		return nil, nil, err
+	}
+	return outFile, writer, nil
+}
+
+func archiveOldPcaps(liveDir string, keepRecent int) {
+	entries, err := os.ReadDir(liveDir)
+	if err != nil {
+		return
+	}
+
+	type fi struct {
+		path string
+		mod  time.Time
+	}
+	files := make([]fi, 0, len(entries))
+	for _, e := range entries {
+		if e.IsDir() || strings.HasSuffix(strings.ToLower(e.Name()), ".gz") {
+			continue
+		}
+		if !strings.HasSuffix(strings.ToLower(e.Name()), ".pcap") {
+			continue
+		}
+		p := filepath.Join(liveDir, e.Name())
+		info, err := os.Stat(p)
+		if err != nil {
+			continue
+		}
+		files = append(files, fi{path: p, mod: info.ModTime()})
+	}
+	sort.Slice(files, func(i, j int) bool { return files[i].mod.After(files[j].mod) })
+	if keepRecent < 0 {
+		keepRecent = 0
+	}
+	if len(files) <= keepRecent {
+		return
+	}
+
+	for _, item := range files[keepRecent:] {
+		gzPath := item.path + ".gz"
+		if _, err := os.Stat(gzPath); err == nil {
+			continue
+		}
+		src, err := os.Open(item.path)
+		if err != nil {
+			continue
+		}
+		dst, err := os.Create(gzPath)
+		if err != nil {
+			_ = src.Close()
+			continue
+		}
+		gw := gzip.NewWriter(dst)
+		_, cpErr := io.Copy(gw, src)
+		_ = gw.Close()
+		_ = dst.Close()
+		_ = src.Close()
+		if cpErr == nil {
+			_ = os.Remove(item.path)
+		}
+	}
+}
+
 func main() {
 	iface := flag.String("iface", "", "Interface name or description keyword")
 	ifaceIndex := flag.Int("iface-index", -1, "Interface index from -list-ifaces")
@@ -126,6 +207,9 @@ func main() {
 	jsonOutput := flag.Bool("json", false, "When used with -list-ifaces, print JSON output")
 	output := flag.String("out", defaultOutputPath(), "Output pcap path")
 	packetCount := flag.Int("count", 500, "Max packets to capture")
+	rotatePackets := flag.Int("rotate-packets", 20000, "Packets per shard file")
+	archive := flag.Bool("archive", true, "Archive old shard files to .gz")
+	archiveKeep := flag.Int("archive-keep", 20, "Keep recent pcap files uncompressed in live dir")
 	timeoutSec := flag.Int("timeout", 60, "Max capture time in seconds")
 	snaplen := flag.Int("snaplen", 65535, "Snap length")
 	promisc := flag.Bool("promisc", true, "Promiscuous mode")
@@ -133,6 +217,9 @@ func main() {
 
 	if *packetCount <= 0 {
 		log.Fatal("count must be > 0")
+	}
+	if *rotatePackets <= 0 {
+		log.Fatal("rotate-packets must be > 0")
 	}
 	if *timeoutSec <= 0 {
 		log.Fatal("timeout must be > 0")
@@ -171,17 +258,6 @@ func main() {
 	}
 	defer handle.Close()
 
-	outFile, err := os.Create(*output)
-	if err != nil {
-		log.Fatalf("failed to create output file: %v", err)
-	}
-	defer outFile.Close()
-
-	writer := pcapgo.NewWriter(outFile)
-	if err := writer.WriteFileHeader(uint32(*snaplen), handle.LinkType()); err != nil {
-		log.Fatalf("failed to write pcap header: %v", err)
-	}
-
 	packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
 	timeout := time.After(time.Duration(*timeoutSec) * time.Second)
 
@@ -189,15 +265,44 @@ func main() {
 	if desc == "" {
 		desc = "(no description)"
 	}
-	fmt.Printf("Start capture on [%d] %s (%s) output=%s count=%d timeout=%ds\n", picked.Index, picked.Name, desc, *output, *packetCount, *timeoutSec)
+	fmt.Printf("Start capture on [%d] %s (%s) output=%s count=%d timeout=%ds rotate=%d\n", picked.Index, picked.Name, desc, *output, *packetCount, *timeoutSec, *rotatePackets)
 
 	captured := 0
+	shardIdx := 1
+	shardCaptured := 0
+	currentShardPath := shardPath(*output, shardIdx)
+	outFile, writer, err := createShardWriter(currentShardPath, *snaplen, handle.LinkType())
+	if err != nil {
+		log.Fatalf("failed to create shard writer: %v", err)
+	}
+	createdShards := []string{currentShardPath}
+
+	rotateWriter := func() {
+		_ = outFile.Close()
+		shardIdx++
+		shardCaptured = 0
+		currentShardPath = shardPath(*output, shardIdx)
+		var wErr error
+		outFile, writer, wErr = createShardWriter(currentShardPath, *snaplen, handle.LinkType())
+		if wErr != nil {
+			log.Fatalf("failed to rotate shard writer: %v", wErr)
+		}
+		createdShards = append(createdShards, currentShardPath)
+	}
+
 	for captured < *packetCount {
 		select {
 		case pkt, ok := <-packetSource.Packets():
 			if !ok {
 				fmt.Println("Packet source closed")
-				fmt.Printf("Capture finished. packets=%d output=%s\n", captured, *output)
+				_ = outFile.Close()
+				fmt.Printf("Capture finished. packets=%d shards=%d\n", captured, len(createdShards))
+				for _, p := range createdShards {
+					fmt.Printf(" - %s\n", p)
+				}
+				if *archive {
+					archiveOldPcaps(filepath.Dir(*output), *archiveKeep)
+				}
 				return
 			}
 
@@ -207,13 +312,31 @@ func main() {
 			}
 
 			captured++
+			shardCaptured++
+			if shardCaptured >= *rotatePackets && captured < *packetCount {
+				rotateWriter()
+			}
 		case <-timeout:
 			fmt.Println("Capture timeout reached")
-			fmt.Printf("Capture finished. packets=%d output=%s\n", captured, *output)
+			_ = outFile.Close()
+			fmt.Printf("Capture finished. packets=%d shards=%d\n", captured, len(createdShards))
+			for _, p := range createdShards {
+				fmt.Printf(" - %s\n", p)
+			}
+			if *archive {
+				archiveOldPcaps(filepath.Dir(*output), *archiveKeep)
+			}
 			return
 		}
 	}
 
-	fmt.Printf("Capture finished. packets=%d output=%s\n", captured, *output)
+	_ = outFile.Close()
+	fmt.Printf("Capture finished. packets=%d shards=%d\n", captured, len(createdShards))
+	for _, p := range createdShards {
+		fmt.Printf(" - %s\n", p)
+	}
+	if *archive {
+		archiveOldPcaps(filepath.Dir(*output), *archiveKeep)
+	}
 	fmt.Println("Tip: use -list-ifaces to get index and description, then set -iface-index", strconv.Itoa(picked.Index))
 }

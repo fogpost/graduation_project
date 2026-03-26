@@ -1,0 +1,20 @@
+[
+  {
+    "username": "viewer",
+    "password_hash": "65375049b9e4d7cad6c9ba286fdeb9394b28135a3e84136404cfccfdcc438894",
+    "role": "viewer",
+    "enabled": true
+  },
+  {
+    "username": "admin",
+    "password_hash": "240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9",
+    "role": "admin",
+    "enabled": true
+  },
+  {
+    "username": "operator",
+    "password_hash": "ec6e1c25258002eb1c67d15c7f45da7945fa4c58778fd7d88faa5e53e3b4698d",
+    "role": "operator",
+    "enabled": true
+  }
+]

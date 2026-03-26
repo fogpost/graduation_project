@@ -142,6 +142,29 @@ async function loadDataFile(path, { silent = false } = {}) {
   } catch (e) { actionMessage.value = `文件加载失败: ${e}`; } finally { actionRunning = false; }
 }
 
+async function deleteDataFile(path) {
+  if (!path) return;
+  if (!window.confirm(`确认删除文件？\n${path}`)) return;
+  try {
+    const r = await fetch(`${API_BASE}/data-file?relative_path=${encodeURIComponent(path)}`, { method: "DELETE" });
+    if (!r.ok) throw new Error((await r.text()) || `HTTP ${r.status}`);
+    await refreshFileCatalog(true); await loadPackets(); await refreshAnalysis();
+    actionMessage.value = `已删除文件: ${path}`;
+  } catch (e) { actionMessage.value = `删除文件失败: ${e}`; }
+}
+
+async function deleteSelectedPacket() {
+  if (selectedPacketId.value === null || selectedPacketId.value === undefined) return;
+  if (!window.confirm(`确认删除当前选中包 #${selectedPacketId.value} 吗？`)) return;
+  try {
+    const r = await fetch(`${API_BASE}/packet/${selectedPacketId.value}`, { method: "DELETE" });
+    if (!r.ok) throw new Error((await r.text()) || `HTTP ${r.status}`);
+    selectedPacketId.value = null; detail.value = null;
+    await loadPackets(); await refreshAnalysis();
+    actionMessage.value = "已删除选中包";
+  } catch (e) { actionMessage.value = `删除包失败: ${e}`; }
+}
+
 async function loadNextDataFile() {
   if (actionRunning) return;
   actionRunning = true;
@@ -276,23 +299,24 @@ onUnmounted(() => stopPolling());
           <div v-if="!(report.alerts?.length)">暂无告警</div>
           <div v-for="a in report.alerts || []" :key="a.alert_id" class="alert" :data-level="a.severity">
             <div class="alert-head"><b>{{ a.alert_id }} · {{ a.title }}</b><span><button @click="toggleAlertExpand(a.alert_id)">{{ isAlertExpanded(a.alert_id) ? '收起' : '证据' }}</button><button @click="locateAlertPacket(a)" :disabled="a?.evidence?.primary_packet_id===undefined || a?.evidence?.primary_packet_id===null">定位包</button></span></div>
+            <div v-if="a.alert_ip">告警IP: {{ a.alert_ip }}</div>
             <div>{{ a.description }}</div><div>建议: {{ a.recommendation }}</div>
             <div v-if="isAlertExpanded(a.alert_id)" class="evidence"><div v-for="[k,v] in evidencePairs(a.evidence)" :key="`${a.alert_id}-${k}`">{{ k }}: {{ Array.isArray(v) ? v.join(', ') : v }}</div><div v-if="a?.evidence?.packet_ids?.length">packet_ids: {{ a.evidence.packet_ids.slice(0,12).join(', ') }}</div></div>
           </div>
         </section>
       </aside>
       <section class="main-panel">
-        <div class="panel-top"><button @click="loadPackets">刷新列表</button><button @click="triggerImport">导包</button><button @click="showFilePanel=!showFilePanel">文件列表</button><button @click="loadNextDataFile">解析下一个</button><span class="current-file" :title="currentFile">当前: {{ currentFile || '未加载' }}</span><span>总包数: {{ total }}</span></div>
+        <div class="panel-top"><button @click="loadPackets">刷新列表</button><button @click="triggerImport">导包</button><button @click="showFilePanel=!showFilePanel">文件列表</button><button @click="loadNextDataFile">解析下一个</button><button class="danger" @click="deleteSelectedPacket">删除选中包</button><span class="current-file" :title="currentFile">当前: {{ currentFile || '未加载' }}</span><span>总包数: {{ total }}</span></div>
         <div class="error" v-if="listError || fileError">{{ listError || fileError }}</div>
         <div class="main-grid">
           <div class="list-area">
-            <div class="file-panel" v-if="showFilePanel"><div v-for="f in fileItems" :key="f.relative_path"><button @click="loadDataFile(f.relative_path)">[{{ f.index }}] {{ f.relative_path }}</button></div></div>
-            <div class="table-wrap"><table><thead><tr><th style="width:60px">No</th><th>Summary</th><th style="width:90px">Length</th></tr></thead><tbody><tr v-for="p in packets" :key="p.id" :class="{selected:p.id===selectedPacketId}" @click="selectPacket(p.id)"><td>{{ p.id }}</td><td :title="p.summary">{{ p.summary }}</td><td>{{ p.length }}</td></tr></tbody></table></div>
+            <div class="file-panel" v-if="showFilePanel"><div v-for="f in fileItems" :key="f.relative_path"><button @click="loadDataFile(f.relative_path)">[{{ f.index }}] {{ f.relative_path }}</button><button class="danger" @click="deleteDataFile(f.relative_path)">删除</button></div></div>
+            <div class="table-wrap"><table><thead><tr><th style="width:54px">No</th><th style="width:82px">协议</th><th>源IP</th><th>目的IP</th><th style="width:86px">源端口</th><th style="width:86px">目的端口</th><th style="width:78px">长度</th></tr></thead><tbody><tr v-for="p in packets" :key="p.id" :class="{selected:p.id===selectedPacketId}" @click="selectPacket(p.id)"><td>{{ p.id }}</td><td>{{ p.protocol || '-' }}</td><td :title="p.src_ip">{{ p.src_ip || '-' }}</td><td :title="p.dst_ip">{{ p.dst_ip || '-' }}</td><td>{{ p.src_port ?? '-' }}</td><td>{{ p.dst_port ?? '-' }}</td><td>{{ p.length }}</td></tr></tbody></table></div>
           </div>
           <div class="detail-area">
             <div v-if="detailError" class="error">{{ detailError }}</div><div v-else-if="!detail" class="hint">请选择数据包</div>
             <div v-else class="detail-grid">
-              <div class="parse-pane"><div class="sub">解析数据</div><div class="parse-scroll"><div class="layer" v-for="layer in detail.layers" :key="`${layer.layer_name}-${layer.start}`"><div class="layer-head" @mouseover="highlightField(layer.start, Math.max(layer.end-layer.start,0))" @mouseleave="clearHighlight">{{ layer.layer_label || layer.layer_name }} [{{ layer.start }}-{{ layer.end }}]</div><div class="field" v-for="f in layer.fields" :key="`${layer.layer_name}-${f.name}-${f.offset}`" @mouseover="highlightField(f.offset,f.length)" @mouseleave="clearHighlight"><span>{{ f.label || f.name }}</span><span :title="f.readable_value">{{ f.readable_value }}</span><span :title="f.value">原始: {{ f.value }}</span><span>[{{ f.offset }},{{ f.length }}]</span></div></div></div></div>
+              <div class="parse-pane"><div class="sub">解析数据</div><div class="parse-scroll"><div class="layer" v-for="layer in detail.layers" :key="`${layer.layer_name}-${layer.start}`"><div class="layer-head" @mouseover="highlightField(layer.start, Math.max(layer.end-layer.start,0))" @mouseleave="clearHighlight">{{ layer.layer_label || layer.layer_name }} [{{ layer.start }}-{{ layer.end }}]</div><div class="field" v-for="f in layer.fields" :key="`${layer.layer_name}-${f.name}-${f.offset}`" @mouseover="highlightField(f.offset,f.length)" @mouseleave="clearHighlight"><span>{{ f.label || f.name }}</span><span :title="f.readable_value">{{ f.readable_value }}</span><span :title="f.value">原始: {{ f.value }}</span></div></div></div></div>
               <div class="hex-pane"><div class="sub">Hex</div><div class="hex-box"><div class="hex-row" v-for="(row,rowIndex) in hexRows" :key="rowIndex"><span class="offset">{{ (rowIndex*16).toString(16).padStart(4,'0') }}</span><span v-for="(b,i) in row" :key="`${rowIndex}-${i}`" class="byte" :class="{active:isHighlighted(rowIndex*16+i)}">{{ b.toUpperCase() }}</span></div></div></div>
             </div>
           </div>
@@ -323,7 +347,7 @@ onUnmounted(() => stopPolling());
 button{border:1px solid #2b7244;background:#2f7d4a;color:#fff;border-radius:6px;padding:5px 9px;cursor:pointer} button.danger{background:#fff3f3;color:#9c2a2a;border-color:#e0b5b5} input,select{border:1px solid #c8d6cd;border-radius:6px;padding:6px 8px}
 .layout{flex:1;min-height:0;display:grid;grid-template-columns:minmax(320px,370px) minmax(0,1fr);gap:10px;padding:10px}.sidebar,.main-panel{min-height:0;border:1px solid #d2ddd7;border-radius:8px;background:#fff;overflow:hidden}.sidebar{display:grid;grid-template-rows:auto auto minmax(180px,220px) minmax(0,1fr);gap:8px;padding:8px}.card{border:1px solid #dce6e0;border-radius:8px;padding:8px;background:#f9fcfa;min-height:0}.hint{font-size:12px;color:#4d6154}.truncate{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.row{display:grid;grid-template-columns:1fr auto;gap:8px}.grid4{display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px}.mini{font-size:12px;line-height:1.4}.alerts{overflow:auto}.alert{border:1px solid #d5e2d9;border-left:4px solid #b8860b;border-radius:6px;padding:6px;margin-bottom:8px;font-size:12px}.alert[data-level="high"]{border-left-color:#b22222}.alert-head{display:flex;justify-content:space-between;gap:8px;align-items:center}.evidence{margin-top:6px;border-top:1px dashed #cddccf;padding-top:6px}
 .main-panel{display:grid;grid-template-rows:auto auto 1fr}.panel-top{display:flex;align-items:center;gap:8px;padding:8px;border-bottom:1px solid #d7e1da;flex-wrap:wrap}.current-file{margin-left:auto;font-size:12px;max-width:44%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.error{color:#9a1e1e;font-size:12px;padding:6px 8px}.main-grid{min-height:0;display:grid;grid-template-columns:minmax(380px,44%) minmax(0,56%)}.list-area,.detail-area{min-height:0}.list-area{border-right:1px solid #e3ebe5;display:grid;grid-template-rows:auto 1fr}.file-panel{max-height:200px;overflow:auto;padding:6px}.table-wrap{min-height:0;overflow:auto} table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:13px} th,td{border-bottom:1px solid #e8efe9;padding:7px 8px;text-overflow:ellipsis;overflow:hidden;white-space:nowrap} thead{position:sticky;top:0;background:#2a6c42;color:#fff} tr.selected{background:#ddefe2}
-.detail-grid{height:100%;display:grid;grid-template-columns:minmax(360px,1fr) minmax(280px,1fr)}.parse-pane,.hex-pane{min-height:0;display:grid;grid-template-rows:auto 1fr;padding:8px}.sub{font-weight:700;margin-bottom:6px}.parse-scroll,.hex-box{min-height:0;overflow:auto}.layer{border:1px solid #dce6df;border-radius:6px;margin-bottom:8px}.layer-head{background:#e9f3ec;padding:6px;font-weight:700;font-size:12px}.field{padding:6px;border-top:1px dashed #dbe5de;display:grid;grid-template-columns:24% 30% 32% 14%;gap:6px;font-size:12px}
+.detail-grid{height:100%;display:grid;grid-template-columns:minmax(360px,1fr) minmax(280px,1fr)}.parse-pane,.hex-pane{min-height:0;display:grid;grid-template-rows:auto 1fr;padding:8px}.sub{font-weight:700;margin-bottom:6px}.parse-scroll,.hex-box{min-height:0;overflow:auto}.layer{border:1px solid #dce6df;border-radius:6px;margin-bottom:8px}.layer-head{background:#e9f3ec;padding:6px;font-weight:700;font-size:12px}.field{padding:6px;border-top:1px dashed #dbe5de;display:grid;grid-template-columns:24% 38% 38%;gap:6px;font-size:12px}
 .hex-row{display:flex;gap:6px;margin-bottom:4px;font-family:Consolas,monospace;font-size:12px}.offset{width:44px;color:#5f7266}.byte{min-width:22px;text-align:center;border-radius:4px;padding:2px 0}.byte.active{background:#ffe28f;color:#5b3b00;font-weight:700}
 .terminal-center{position:fixed;left:12px;right:12px;top:72px;bottom:12px;border:1px solid #c7d9ce;border-radius:10px;background:#f7fbf8;z-index:90;display:grid;grid-template-rows:auto 1fr}.terminal-header{padding:10px;border-bottom:1px solid #dbe7df;display:flex;justify-content:space-between;align-items:center}.terminal-layout{min-height:0;display:grid;grid-template-columns:320px minmax(0,1fr)}.terminal-side{border-right:1px solid #dce8e0;padding:10px;overflow:auto}.term-list{display:grid;gap:6px}.term-item{border:1px solid #d4e1d8;border-radius:6px;padding:6px;display:flex;justify-content:space-between;cursor:pointer}.term-item.active{border-color:#2f7d4a;background:#e9f4ed}.terminal-main{min-height:0;display:grid;grid-template-rows:auto 1fr}.terminal-main-head{padding:10px;border-bottom:1px solid #e0ebe4;display:flex;justify-content:space-between;gap:8px}.terminal-console{min-height:0;overflow:auto;padding:10px;background:#132a1d;color:#cde6d6;font-family:Consolas,monospace;font-size:12px;white-space:pre-wrap}.line{margin-bottom:4px}.prompt-row{display:grid;grid-template-columns:auto 1fr;gap:8px;align-items:center;border-top:1px solid #2a4a38;margin-top:8px;padding-top:8px;position:sticky;bottom:0;background:#132a1d}.prompt-input{background:transparent;border:none;outline:none;color:#d9f7e5;font-family:inherit}
 @media (max-width:980px){.layout{grid-template-columns:1fr}.sidebar{max-height:45dvh;overflow:auto}.main-grid{grid-template-columns:1fr}.terminal-layout{grid-template-columns:1fr;grid-template-rows:auto 1fr}}

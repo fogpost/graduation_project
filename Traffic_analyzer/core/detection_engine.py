@@ -100,7 +100,7 @@ def build_detection_report():
 
         if pkt.haslayer(ARP):
             arp = pkt[ARP]
-            if int(getattr(arp, "op", 0)) == 2:
+            if int(getattr(arp, "op", 0)) in {1, 2}:
                 psrc = str(getattr(arp, "psrc", ""))
                 hwsrc = str(getattr(arp, "hwsrc", ""))
                 if psrc and hwsrc:
@@ -141,6 +141,7 @@ def build_detection_report():
                     "severity": "high",
                     "title": "同一 IP 出现多个 ARP 源 MAC",
                     "description": "检测到 ARP 应答映射冲突，存在 ARP 欺骗风险。",
+                    "alert_ip": ip,
                     "evidence": {
                         "ip": ip,
                         "macs": sorted(macs),
@@ -152,7 +153,7 @@ def build_detection_report():
                 }
             )
 
-    syn_threshold = max(100, int(packet_count * 0.2))
+    syn_threshold = max(10, int(packet_count * 0.1))
     for src, count in syn_counter.items():
         if count >= syn_threshold:
             matched_packets = sorted(set(syn_packet_ids[src]))
@@ -162,6 +163,7 @@ def build_detection_report():
                     "severity": "high",
                     "title": "疑似 SYN Flood",
                     "description": "单源 SYN 请求量异常偏高。",
+                    "alert_ip": src,
                     "evidence": {
                         "src_ip": src,
                         "syn_count": count,
@@ -173,7 +175,7 @@ def build_detection_report():
                 }
             )
 
-    dns_threshold = max(80, int(packet_count * 0.15))
+    dns_threshold = max(10, int(packet_count * 0.1))
     for src, count in dns_counter.items():
         if count >= dns_threshold:
             matched_packets = sorted(set(dns_packet_ids[src]))
@@ -183,6 +185,7 @@ def build_detection_report():
                     "severity": "medium",
                     "title": "疑似 DNS 请求洪泛",
                     "description": "单源对 DNS 端口的 UDP 请求量异常偏高。",
+                    "alert_ip": src,
                     "evidence": {
                         "src_ip": src,
                         "dns_request_count": count,
@@ -194,7 +197,7 @@ def build_detection_report():
                 }
             )
 
-    icmp_threshold = max(80, int(packet_count * 0.15))
+    icmp_threshold = max(10, int(packet_count * 0.1))
     for src, count in icmp_counter.items():
         if count >= icmp_threshold:
             matched_packets = sorted(set(icmp_packet_ids[src]))
@@ -204,6 +207,7 @@ def build_detection_report():
                     "severity": "medium",
                     "title": "疑似 ICMP Flood",
                     "description": "单源 ICMP Echo 请求数量异常偏高。",
+                    "alert_ip": src,
                     "evidence": {
                         "src_ip": src,
                         "icmp_echo_count": count,
@@ -225,6 +229,7 @@ def build_detection_report():
                     "severity": "medium",
                     "title": "疑似端口扫描",
                     "description": "单源访问目的端口数量异常偏高。",
+                    "alert_ip": src,
                     "evidence": {
                         "src_ip": src,
                         "unique_dst_ports": len(ports),

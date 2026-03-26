@@ -21,8 +21,8 @@ from Traffic_analyzer.core.detection_engine import RULE_LIBRARY, build_detection
 from Traffic_analyzer.core import pcap_loader
 
 BASE_DIR = Path(__file__).resolve().parent
-DEFAULT_PCAP = DATA_ROOT / "test" / "all-xena-pcap" / "ARP_Spoofing.pcap"
-PCAP_ON_STARTUP = Path(os.getenv("PCAP_ON_STARTUP", str(DEFAULT_PCAP)))
+PCAP_ON_STARTUP_ENV = os.getenv("PCAP_ON_STARTUP", "").strip()
+PCAP_ON_STARTUP = Path(PCAP_ON_STARTUP_ENV) if PCAP_ON_STARTUP_ENV else None
 UPLOAD_DIR = DATA_ROOT / "imported"
 ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*")
 ORIGINS = ["*"] if ALLOWED_ORIGINS.strip() == "*" else [x.strip() for x in ALLOWED_ORIGINS.split(",") if x.strip()]
@@ -30,7 +30,7 @@ ORIGINS = ["*"] if ALLOWED_ORIGINS.strip() == "*" else [x.strip() for x in ALLOW
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    if PCAP_ON_STARTUP.exists():
+    if PCAP_ON_STARTUP and PCAP_ON_STARTUP.exists():
         pcap_loader.load_pcap(PCAP_ON_STARTUP)
         set_sequence_cursor_from_path(PCAP_ON_STARTUP)
     yield
@@ -55,7 +55,12 @@ def health():
 @app.post("/load")
 @app.get("/load")
 def load(file_path: str | None = Query(default=None, description="PCAP file path")):
-    target = Path(file_path) if file_path else PCAP_ON_STARTUP
+    if file_path:
+        target = Path(file_path)
+    elif PCAP_ON_STARTUP:
+        target = PCAP_ON_STARTUP
+    else:
+        raise HTTPException(status_code=400, detail="No startup pcap configured, please provide file_path")
     try:
         count = pcap_loader.load_pcap(target)
         set_sequence_cursor_from_path(target)
@@ -127,6 +132,39 @@ def load_next_data_file():
     }
 
 
+@app.delete("/data-file")
+def delete_data_file(
+    relative_path: str = Query(..., description="Path relative to Traffic_analyzer/data"),
+):
+    try:
+        target = resolve_data_relative_path(relative_path)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if not target.exists() or not target.is_file():
+        raise HTTPException(status_code=404, detail=f"File not found: {relative_path}")
+
+    loaded = pcap_loader.loaded_pcap_path
+    is_loaded_file = loaded is not None and loaded.resolve() == target.resolve()
+
+    try:
+        target.unlink()
+    except Exception as exc:  # pragma: no cover
+        raise HTTPException(status_code=500, detail=f"Failed to delete file: {exc}") from exc
+
+    if is_loaded_file:
+        pcap_loader.packets.clear()
+        pcap_loader.loaded_pcap_path = None
+
+    return {
+        "deleted": True,
+        "relative_path": relative_path,
+        "was_loaded_file": is_loaded_file,
+    }
+
+
 @app.post("/upload-pcap")
 def upload_pcap(file: UploadFile = File(...)):
     suffix = Path(file.filename or "").suffix.lower()
@@ -181,6 +219,19 @@ def packet_detail(packet_id: int):
         return parse_packet_detail(packet_id)
     except IndexError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.delete("/packet/{packet_id}")
+def delete_packet(packet_id: int):
+    if packet_id < 0 or packet_id >= len(pcap_loader.packets):
+        raise HTTPException(status_code=404, detail=f"packet_id out of range: {packet_id}")
+
+    del pcap_loader.packets[packet_id]
+    return {
+        "deleted": True,
+        "packet_id": packet_id,
+        "remaining": len(pcap_loader.packets),
+    }
 
 
 @app.get("/analysis/rules")

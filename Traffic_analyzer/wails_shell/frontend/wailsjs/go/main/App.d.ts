@@ -12,15 +12,21 @@ export function CreateLocalTerminal(arg1:string):Promise<main.TerminalInfo>;
 
 export function CreateSSHTerminal(arg1:string,arg2:number,arg3:string,arg4:string,arg5:string):Promise<main.TerminalInfo>;
 
+export function DeleteTerminalUser(arg1:string):Promise<boolean>;
+
 export function ExecuteTerminalCommand(arg1:string):Promise<string>;
 
 export function ExecuteTerminalCommandByID(arg1:string,arg2:string):Promise<string>;
+
+export function GetCurrentTerminalUser():Promise<Record<string, string>>;
 
 export function GetTerminalLogs(arg1:number):Promise<Array<main.TerminalEntry>>;
 
 export function GetTerminalLogsByID(arg1:string,arg2:number):Promise<Array<main.TerminalEntry>>;
 
 export function ListCaptureInterfaces():Promise<Array<main.CaptureInterface>>;
+
+export function ListTerminalUsers():Promise<Array<Record<string, any>>>;
 
 export function ListTerminals():Promise<Array<main.TerminalInfo>>;
 
@@ -37,3 +43,7 @@ export function StartEmbeddedStack():Promise<Record<string, any>>;
 export function StopCapture():Promise<Record<string, any>>;
 
 export function StopEmbeddedStack():Promise<Record<string, any>>;
+
+export function TerminalLogin(arg1:string,arg2:string):Promise<Record<string, string>>;
+
+export function UpsertTerminalUser(arg1:string,arg2:string,arg3:string,arg4:boolean):Promise<void>;

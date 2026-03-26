@@ -3,7 +3,10 @@ package main
 import (
 	"bufio"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -16,6 +19,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 	"unicode/utf8"
 
@@ -72,6 +76,18 @@ type winAdapterMeta struct {
 	LinkSpeed            string `json:"LinkSpeed"`
 }
 
+type adapterMeta struct {
+	Status string
+	Speed  string
+}
+
+type TerminalUser struct {
+	Username     string `json:"username"`
+	PasswordHash string `json:"password_hash"`
+	Role         string `json:"role"`
+	Enabled      bool   `json:"enabled"`
+}
+
 type App struct {
 	ctx context.Context
 
@@ -89,6 +105,11 @@ type App struct {
 
 	terminals map[string]*ManagedTerminal
 	nextTerm  int
+
+	authMu      sync.Mutex
+	users       map[string]TerminalUser
+	currentUser string
+	auditPath   string
 }
 
 func NewApp() *App {
@@ -96,6 +117,7 @@ func NewApp() *App {
 		terminals:                 make(map[string]*ManagedTerminal),
 		nextTerm:                  1,
 		selectedCaptureIfaceIndex: -1,
+		users:                     make(map[string]TerminalUser),
 	}
 }
 
@@ -104,6 +126,8 @@ func (a *App) startup(ctx context.Context) {
 	a.repoRoot, a.taRoot = resolveProjectPaths()
 	a.dataDir = resolveDataDir(a.taRoot)
 	a.selectedCaptureIfaceIndex = -1
+	a.auditPath = filepath.Join(a.dataDir, "logs", "terminal_audit.log")
+	a.loadUsers()
 
 	a.appendSystemLog("project_root=" + a.repoRoot)
 	a.appendSystemLog("ta_root=" + a.taRoot)
@@ -198,6 +222,145 @@ func resolveDataDir(taRoot string) string {
 	fallback := filepath.Join(cfgDir, "traffic-analyzer", "data")
 	_ = os.MkdirAll(fallback, 0o755)
 	return fallback
+}
+
+func setWindowsHidden(cmd *exec.Cmd) {
+	if runtime.GOOS == "windows" && cmd != nil {
+		cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	}
+}
+
+func hashPassword(plain string) string {
+	sum := sha256.Sum256([]byte(plain))
+	return hex.EncodeToString(sum[:])
+}
+
+func isValidRole(role string) bool {
+	switch role {
+	case "admin", "operator", "viewer":
+		return true
+	default:
+		return false
+	}
+}
+
+func roleAllows(role string, action string) bool {
+	switch role {
+	case "admin":
+		return true
+	case "operator":
+		return action != "user.manage"
+	case "viewer":
+		return action == "terminal.view"
+	default:
+		return false
+	}
+}
+
+func (a *App) currentUserInfo() (string, string) {
+	a.authMu.Lock()
+	defer a.authMu.Unlock()
+	user := a.currentUser
+	role := "viewer"
+	if u, ok := a.users[user]; ok {
+		role = u.Role
+	}
+	return user, role
+}
+
+func (a *App) audit(action string, target string, result string, detail string) {
+	user, role := a.currentUserInfo()
+	record := map[string]string{
+		"timestamp": time.Now().Format(time.RFC3339),
+		"user":      user,
+		"role":      role,
+		"action":    action,
+		"target":    target,
+		"result":    result,
+		"detail":    detail,
+	}
+	data, err := json.Marshal(record)
+	if err != nil {
+		return
+	}
+	_ = os.MkdirAll(filepath.Dir(a.auditPath), 0o755)
+	f, err := os.OpenFile(a.auditPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	_, _ = f.WriteString(string(data) + "\n")
+}
+
+func (a *App) requirePermission(action string) error {
+	user, role := a.currentUserInfo()
+	if !roleAllows(role, action) {
+		a.audit(action, "-", "denied", fmt.Sprintf("permission denied for user=%s role=%s", user, role))
+		return fmt.Errorf("permission denied: role %s cannot %s", role, action)
+	}
+	return nil
+}
+
+func (a *App) usersConfigPath() string {
+	return filepath.Join(a.dataDir, "security", "terminal_users.json")
+}
+
+func (a *App) saveUsers() {
+	_ = os.MkdirAll(filepath.Dir(a.usersConfigPath()), 0o755)
+	a.authMu.Lock()
+	items := make([]TerminalUser, 0, len(a.users))
+	for _, u := range a.users {
+		items = append(items, u)
+	}
+	a.authMu.Unlock()
+	data, err := json.MarshalIndent(items, "", "  ")
+	if err != nil {
+		return
+	}
+	_ = os.WriteFile(a.usersConfigPath(), data, 0o644)
+}
+
+func (a *App) loadUsers() {
+	path := a.usersConfigPath()
+	if !pathExists(path) {
+		a.authMu.Lock()
+		a.users["admin"] = TerminalUser{Username: "admin", PasswordHash: hashPassword("admin123"), Role: "admin", Enabled: true}
+		a.users["operator"] = TerminalUser{Username: "operator", PasswordHash: hashPassword("operator123"), Role: "operator", Enabled: true}
+		a.users["viewer"] = TerminalUser{Username: "viewer", PasswordHash: hashPassword("viewer123"), Role: "viewer", Enabled: true}
+		a.currentUser = "admin"
+		a.authMu.Unlock()
+		a.saveUsers()
+		return
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	var items []TerminalUser
+	if err := json.Unmarshal(data, &items); err != nil {
+		return
+	}
+	a.authMu.Lock()
+	defer a.authMu.Unlock()
+	for _, u := range items {
+		if u.Username == "" || !isValidRole(u.Role) {
+			continue
+		}
+		a.users[u.Username] = u
+	}
+	if _, ok := a.users[a.currentUser]; !ok {
+		if _, ok := a.users["admin"]; ok {
+			a.currentUser = "admin"
+		}
+	}
+	if a.currentUser == "" {
+		for _, u := range a.users {
+			if u.Enabled {
+				a.currentUser = u.Username
+				break
+			}
+		}
+	}
 }
 
 func decodeOutput(raw []byte) string {
@@ -376,6 +539,7 @@ func (a *App) startLocalShell(termID string) error {
 	} else {
 		cmd = exec.Command("bash")
 	}
+	setWindowsHidden(cmd)
 	cmd.Dir = a.repoRoot
 
 	stdout, err := cmd.StdoutPipe()
@@ -535,6 +699,7 @@ func (a *App) startBackend() error {
 
 	args := append(py[1:], "-m", "uvicorn", "Traffic_analyzer.main:app", "--host", "127.0.0.1", "--port", "8000")
 	cmd := exec.Command(py[0], args...)
+	setWindowsHidden(cmd)
 	cmd.Dir = a.repoRoot
 	cmd.Env = append(os.Environ(),
 		"TRAFFIC_ANALYZER_DATA_DIR="+a.dataDir,
@@ -552,27 +717,28 @@ func (a *App) goCaptureRoot() string {
 	return filepath.Join(a.taRoot, "go_capture")
 }
 
-func readWindowsAdapterMeta() map[string]winAdapterMeta {
+func readWindowsAdapterMeta() map[string]adapterMeta {
 	if runtime.GOOS != "windows" {
-		return map[string]winAdapterMeta{}
+		return map[string]adapterMeta{}
 	}
 	cmd := exec.Command("powershell", "-NoProfile", "-Command", "Get-NetAdapter | Select-Object Name,InterfaceDescription,Status,LinkSpeed | ConvertTo-Json -Compress")
+	setWindowsHidden(cmd)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return map[string]winAdapterMeta{}
+		return map[string]adapterMeta{}
 	}
 	text := strings.TrimSpace(decodeOutput(out))
 	if text == "" {
-		return map[string]winAdapterMeta{}
+		return map[string]adapterMeta{}
 	}
 
-	mapping := map[string]winAdapterMeta{}
+	mapping := map[string]adapterMeta{}
 	var arr []winAdapterMeta
 	if err := json.Unmarshal([]byte(text), &arr); err == nil {
 		for _, item := range arr {
 			key := strings.ToLower(strings.TrimSpace(item.InterfaceDescription))
 			if key != "" {
-				mapping[key] = item
+				mapping[key] = adapterMeta{Status: strings.TrimSpace(item.Status), Speed: strings.TrimSpace(item.LinkSpeed)}
 			}
 		}
 		return mapping
@@ -582,10 +748,79 @@ func readWindowsAdapterMeta() map[string]winAdapterMeta {
 	if err := json.Unmarshal([]byte(text), &one); err == nil {
 		key := strings.ToLower(strings.TrimSpace(one.InterfaceDescription))
 		if key != "" {
-			mapping[key] = one
+			mapping[key] = adapterMeta{Status: strings.TrimSpace(one.Status), Speed: strings.TrimSpace(one.LinkSpeed)}
 		}
 	}
 	return mapping
+}
+
+func readLinuxAdapterMeta() map[string]adapterMeta {
+	if runtime.GOOS != "linux" {
+		return map[string]adapterMeta{}
+	}
+	root := "/sys/class/net"
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return map[string]adapterMeta{}
+	}
+	out := map[string]adapterMeta{}
+	for _, e := range entries {
+		name := strings.ToLower(strings.TrimSpace(e.Name()))
+		if name == "" {
+			continue
+		}
+		statusData, _ := os.ReadFile(filepath.Join(root, e.Name(), "operstate"))
+		speedData, _ := os.ReadFile(filepath.Join(root, e.Name(), "speed"))
+		out[name] = adapterMeta{
+			Status: strings.TrimSpace(string(statusData)),
+			Speed:  strings.TrimSpace(string(speedData)),
+		}
+	}
+	return out
+}
+
+func readDarwinAdapterMeta() map[string]adapterMeta {
+	if runtime.GOOS != "darwin" {
+		return map[string]adapterMeta{}
+	}
+	out := map[string]adapterMeta{}
+	cmd := exec.Command("ifconfig")
+	if outBytes, err := cmd.CombinedOutput(); err == nil {
+		text := decodeOutput(outBytes)
+		blocks := strings.Split(text, "\n\n")
+		for _, b := range blocks {
+			lines := strings.Split(b, "\n")
+			if len(lines) == 0 {
+				continue
+			}
+			iface := strings.TrimSpace(strings.Split(lines[0], ":")[0])
+			if iface == "" {
+				continue
+			}
+			meta := adapterMeta{Status: "unknown", Speed: ""}
+			for _, line := range lines {
+				line = strings.TrimSpace(line)
+				if strings.HasPrefix(line, "status:") {
+					meta.Status = strings.TrimSpace(strings.TrimPrefix(line, "status:"))
+				}
+			}
+			out[strings.ToLower(iface)] = meta
+		}
+	}
+	return out
+}
+
+func readAdapterMeta() map[string]adapterMeta {
+	if runtime.GOOS == "windows" {
+		return readWindowsAdapterMeta()
+	}
+	if runtime.GOOS == "linux" {
+		return readLinuxAdapterMeta()
+	}
+	if runtime.GOOS == "darwin" {
+		return readDarwinAdapterMeta()
+	}
+	return map[string]adapterMeta{}
 }
 
 func (a *App) ListCaptureInterfaces() ([]CaptureInterface, error) {
@@ -595,6 +830,7 @@ func (a *App) ListCaptureInterfaces() ([]CaptureInterface, error) {
 	}
 
 	cmd := exec.Command("go", "run", ".", "-list-ifaces", "-json")
+	setWindowsHidden(cmd)
 	cmd.Dir = goCaptureRoot
 	cmd.Env = append(os.Environ(), "TRAFFIC_ANALYZER_DATA_DIR="+a.dataDir)
 	out, err := cmd.CombinedOutput()
@@ -607,7 +843,7 @@ func (a *App) ListCaptureInterfaces() ([]CaptureInterface, error) {
 		return nil, fmt.Errorf("invalid interface json: %v", err)
 	}
 
-	metaByDesc := readWindowsAdapterMeta()
+	metaLookup := readAdapterMeta()
 	items := make([]CaptureInterface, 0, len(rawItems))
 	for _, r := range rawItems {
 		item := CaptureInterface{
@@ -619,9 +855,17 @@ func (a *App) ListCaptureInterfaces() ([]CaptureInterface, error) {
 		if item.Description == "" {
 			item.Description = "未识别网卡描述"
 		}
-		if meta, ok := metaByDesc[strings.ToLower(item.Description)]; ok {
+		descKey := strings.ToLower(strings.TrimSpace(item.Description))
+		nameKey := strings.ToLower(strings.TrimSpace(item.Name))
+		if meta, ok := metaLookup[descKey]; ok {
 			item.Status = strings.TrimSpace(meta.Status)
-			item.Speed = strings.TrimSpace(meta.LinkSpeed)
+			item.Speed = strings.TrimSpace(meta.Speed)
+		} else if meta, ok := metaLookup[nameKey]; ok {
+			item.Status = strings.TrimSpace(meta.Status)
+			item.Speed = strings.TrimSpace(meta.Speed)
+		}
+		if item.Status == "" {
+			item.Status = "unknown"
 		}
 		display := item.Description
 		if item.Status != "" {
@@ -667,6 +911,7 @@ func (a *App) startCapture(ifaceIndex int, ifaceName string) error {
 	}
 
 	cmd := exec.Command("go", args...)
+	setWindowsHidden(cmd)
 	cmd.Dir = goCaptureRoot
 	cmd.Env = append(os.Environ(), "TRAFFIC_ANALYZER_DATA_DIR="+a.dataDir)
 
@@ -761,7 +1006,110 @@ func (a *App) ServiceStatus() map[string]any {
 	}
 }
 
+func (a *App) GetCurrentTerminalUser() map[string]string {
+	a.authMu.Lock()
+	defer a.authMu.Unlock()
+	u, ok := a.users[a.currentUser]
+	if !ok {
+		return map[string]string{"username": "", "role": "viewer"}
+	}
+	return map[string]string{"username": u.Username, "role": u.Role}
+}
+
+func (a *App) TerminalLogin(username string, password string) (map[string]string, error) {
+	a.authMu.Lock()
+	u, ok := a.users[strings.TrimSpace(username)]
+	if !ok || !u.Enabled {
+		a.authMu.Unlock()
+		a.audit("terminal.login", username, "failed", "user not found or disabled")
+		return nil, errors.New("invalid username or password")
+	}
+	if u.PasswordHash != hashPassword(password) {
+		a.authMu.Unlock()
+		a.audit("terminal.login", username, "failed", "password mismatch")
+		return nil, errors.New("invalid username or password")
+	}
+	a.currentUser = u.Username
+	a.authMu.Unlock()
+	a.audit("terminal.login", username, "success", "login success")
+	return map[string]string{"username": u.Username, "role": u.Role}, nil
+}
+
+func (a *App) ListTerminalUsers() []map[string]any {
+	if err := a.requirePermission("user.manage"); err != nil {
+		return []map[string]any{}
+	}
+	a.authMu.Lock()
+	defer a.authMu.Unlock()
+	out := make([]map[string]any, 0, len(a.users))
+	for _, u := range a.users {
+		out = append(out, map[string]any{
+			"username": u.Username,
+			"role":     u.Role,
+			"enabled":  u.Enabled,
+		})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i]["username"].(string) < out[j]["username"].(string) })
+	return out
+}
+
+func (a *App) UpsertTerminalUser(username string, password string, role string, enabled bool) error {
+	if err := a.requirePermission("user.manage"); err != nil {
+		return err
+	}
+	username = strings.TrimSpace(username)
+	role = strings.TrimSpace(role)
+	if username == "" {
+		return errors.New("username is required")
+	}
+	if !isValidRole(role) {
+		return errors.New("role must be one of admin/operator/viewer")
+	}
+	a.authMu.Lock()
+	u, ok := a.users[username]
+	if !ok {
+		u = TerminalUser{Username: username}
+	}
+	u.Role = role
+	u.Enabled = enabled
+	if strings.TrimSpace(password) != "" {
+		u.PasswordHash = hashPassword(password)
+	}
+	if u.PasswordHash == "" {
+		a.authMu.Unlock()
+		return errors.New("password is required for new user")
+	}
+	a.users[username] = u
+	a.authMu.Unlock()
+	a.saveUsers()
+	a.audit("user.upsert", username, "success", "user upserted")
+	return nil
+}
+
+func (a *App) DeleteTerminalUser(username string) bool {
+	if err := a.requirePermission("user.manage"); err != nil {
+		return false
+	}
+	username = strings.TrimSpace(username)
+	if username == "" || username == "admin" {
+		return false
+	}
+	a.authMu.Lock()
+	if _, ok := a.users[username]; !ok {
+		a.authMu.Unlock()
+		return false
+	}
+	delete(a.users, username)
+	a.authMu.Unlock()
+	a.saveUsers()
+	a.audit("user.delete", username, "success", "user deleted")
+	return true
+}
+
 func (a *App) ListTerminals() []TerminalInfo {
+	if err := a.requirePermission("terminal.view"); err != nil {
+		return []TerminalInfo{}
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -774,6 +1122,9 @@ func (a *App) ListTerminals() []TerminalInfo {
 }
 
 func (a *App) CreateLocalTerminal(name string) (TerminalInfo, error) {
+	if err := a.requirePermission("terminal.create"); err != nil {
+		return TerminalInfo{}, err
+	}
 	a.ensureDefaultLocalTerminal()
 	if strings.TrimSpace(name) == "" {
 		name = "Local"
@@ -788,6 +1139,7 @@ func (a *App) CreateLocalTerminal(name string) (TerminalInfo, error) {
 		return TerminalInfo{}, err
 	}
 	a.appendTerminalLog(id, "system", "interactive local shell ready")
+	a.audit("terminal.create_local", id, "success", "local terminal created")
 
 	a.mu.Lock()
 	info := a.terminals[id].Info
@@ -796,6 +1148,9 @@ func (a *App) CreateLocalTerminal(name string) (TerminalInfo, error) {
 }
 
 func (a *App) CreateSSHTerminal(host string, port int, username string, password string, name string) (TerminalInfo, error) {
+	if err := a.requirePermission("terminal.ssh"); err != nil {
+		return TerminalInfo{}, err
+	}
 	if strings.TrimSpace(host) == "" || strings.TrimSpace(username) == "" {
 		return TerminalInfo{}, fmt.Errorf("host and username are required")
 	}
@@ -836,6 +1191,7 @@ func (a *App) CreateSSHTerminal(host string, port int, username string, password
 		return TerminalInfo{}, err
 	}
 	a.appendTerminalLog(id, "system", "ssh interactive shell connected: "+addr)
+	a.audit("terminal.create_ssh", id, "success", "ssh terminal created: "+addr)
 
 	a.mu.Lock()
 	info := a.terminals[id].Info
@@ -844,6 +1200,9 @@ func (a *App) CreateSSHTerminal(host string, port int, username string, password
 }
 
 func (a *App) CloseTerminal(id string) bool {
+	if err := a.requirePermission("terminal.create"); err != nil {
+		return false
+	}
 	if id == "local-default" {
 		return false
 	}
@@ -854,10 +1213,14 @@ func (a *App) CloseTerminal(id string) bool {
 		return false
 	}
 	delete(a.terminals, id)
+	a.audit("terminal.close", id, "success", "terminal closed")
 	return true
 }
 
 func (a *App) GetTerminalLogsByID(id string, limit int) []TerminalEntry {
+	if err := a.requirePermission("terminal.view"); err != nil {
+		return []TerminalEntry{}
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -879,6 +1242,9 @@ func (a *App) GetTerminalLogsByID(id string, limit int) []TerminalEntry {
 }
 
 func (a *App) ClearTerminalLogsByID(id string) bool {
+	if err := a.requirePermission("terminal.execute"); err != nil {
+		return false
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	t, ok := a.terminals[id]
@@ -886,6 +1252,7 @@ func (a *App) ClearTerminalLogsByID(id string) bool {
 		return false
 	}
 	t.Logs = make([]TerminalEntry, 0, 300)
+	a.audit("terminal.clear", id, "success", "terminal logs cleared")
 	return true
 }
 
@@ -929,6 +1296,9 @@ func (a *App) writeToTerminal(termID string, text string) error {
 }
 
 func (a *App) ExecuteTerminalCommandByID(id string, command string) string {
+	if err := a.requirePermission("terminal.execute"); err != nil {
+		return "permission_denied"
+	}
 	cmdText := strings.TrimSpace(command)
 	if cmdText == "" {
 		return "empty command"
@@ -937,8 +1307,10 @@ func (a *App) ExecuteTerminalCommandByID(id string, command string) string {
 	a.appendTerminalLog(id, "input", cmdText)
 	if err := a.writeToTerminal(id, cmdText); err != nil {
 		a.appendTerminalLog(id, "system", "execute error: "+err.Error())
+		a.audit("terminal.execute", id, "failed", err.Error())
 		return "error"
 	}
+	a.audit("terminal.execute", id, "success", cmdText)
 	return "sent"
 }
 

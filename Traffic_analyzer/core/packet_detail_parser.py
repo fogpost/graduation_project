@@ -144,6 +144,14 @@ def _friendly_value(layer_name: str, field_name: str, value) -> str:
     if field_name in {"len", "window", "ihl"} and ivalue is not None:
         return f"{ivalue} bytes"
 
+    if layer_name == "Raw":
+        if isinstance(value, (bytes, bytearray)):
+            raw = bytes(value)
+            text = raw.decode("utf-8", errors="replace").replace("\r", " ").replace("\n", " ")
+            preview = text[:96] + ("..." if len(text) > 96 else "")
+            return f"{len(raw)} bytes | {preview}"
+        return str(value)
+
     return str(value)
 
 
@@ -164,9 +172,15 @@ def _safe_field_len(field, layer, value) -> int:
 
 def _safe_field_repr(field, layer, value) -> str:
     try:
-        return str(field.i2repr(layer, value))
+        rendered = str(field.i2repr(layer, value))
+        if len(rendered) > 180:
+            return rendered[:180] + "..."
+        return rendered
     except Exception:
-        return str(value)
+        rendered = str(value)
+        if len(rendered) > 180:
+            return rendered[:180] + "..."
+        return rendered
 
 
 def parse_packet_detail(packet_id: int):

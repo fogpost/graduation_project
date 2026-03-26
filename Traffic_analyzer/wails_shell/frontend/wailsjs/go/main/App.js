@@ -22,12 +22,20 @@ export function CreateSSHTerminal(arg1, arg2, arg3, arg4, arg5) {
   return window['go']['main']['App']['CreateSSHTerminal'](arg1, arg2, arg3, arg4, arg5);
 }
 
+export function DeleteTerminalUser(arg1) {
+  return window['go']['main']['App']['DeleteTerminalUser'](arg1);
+}
+
 export function ExecuteTerminalCommand(arg1) {
   return window['go']['main']['App']['ExecuteTerminalCommand'](arg1);
 }
 
 export function ExecuteTerminalCommandByID(arg1, arg2) {
   return window['go']['main']['App']['ExecuteTerminalCommandByID'](arg1, arg2);
+}
+
+export function GetCurrentTerminalUser() {
+  return window['go']['main']['App']['GetCurrentTerminalUser']();
 }
 
 export function GetTerminalLogs(arg1) {
@@ -40,6 +48,10 @@ export function GetTerminalLogsByID(arg1, arg2) {
 
 export function ListCaptureInterfaces() {
   return window['go']['main']['App']['ListCaptureInterfaces']();
+}
+
+export function ListTerminalUsers() {
+  return window['go']['main']['App']['ListTerminalUsers']();
 }
 
 export function ListTerminals() {
@@ -72,4 +84,12 @@ export function StopCapture() {
 
 export function StopEmbeddedStack() {
   return window['go']['main']['App']['StopEmbeddedStack']();
+}
+
+export function TerminalLogin(arg1, arg2) {
+  return window['go']['main']['App']['TerminalLogin'](arg1, arg2);
+}
+
+export function UpsertTerminalUser(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['UpsertTerminalUser'](arg1, arg2, arg3, arg4);
 }
