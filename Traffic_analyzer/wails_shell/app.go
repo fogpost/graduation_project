@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -14,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"sort"
 	"strconv"
@@ -23,8 +25,16 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/creack/pty"
+	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/text/encoding/simplifiedchinese"
+)
+
+var (
+	ansiOSCRegex = regexp.MustCompile(`\x1b\].*?(\x07|\x1b\\)`)
+	ansiCSIRegex = regexp.MustCompile(`\x1b\[[0-9;?]*[ -/]*[@-~]`)
+	ansiESCRegex = regexp.MustCompile(`\x1b[@-_]`)
 )
 
 type TerminalEntry struct {
@@ -42,14 +52,21 @@ type TerminalInfo struct {
 	Interactive bool   `json:"interactive"`
 }
 
+type TerminalStreamPayload struct {
+	ID      string `json:"id"`
+	Source  string `json:"source"`
+	DataB64 string `json:"data_b64"`
+}
+
 type ManagedTerminal struct {
 	Info TerminalInfo
 	Logs []TerminalEntry
 
-	Client  *ssh.Client
-	Session *ssh.Session
-	Cmd     *exec.Cmd
-	Stdin   io.WriteCloser
+	Client   *ssh.Client
+	Session  *ssh.Session
+	Cmd      *exec.Cmd
+	Stdin    io.WriteCloser
+	LocalPTY bool
 }
 
 type captureInterfaceRaw struct {
@@ -377,6 +394,32 @@ func decodeOutput(raw []byte) string {
 	return string(raw)
 }
 
+func sanitizeTerminalText(text string) string {
+	if text == "" {
+		return text
+	}
+	text = ansiOSCRegex.ReplaceAllString(text, "")
+	text = ansiCSIRegex.ReplaceAllString(text, "")
+	text = ansiESCRegex.ReplaceAllString(text, "")
+
+	filtered := make([]rune, 0, len(text))
+	for _, r := range text {
+		switch r {
+		case '\b', 0x7f:
+			if len(filtered) > 0 {
+				filtered = filtered[:len(filtered)-1]
+			}
+		case '\t':
+			filtered = append(filtered, r)
+		default:
+			if r >= 32 {
+				filtered = append(filtered, r)
+			}
+		}
+	}
+	return string(filtered)
+}
+
 func processRunning(cmd *exec.Cmd) bool {
 	if cmd == nil || cmd.Process == nil {
 		return false
@@ -447,25 +490,139 @@ func (a *App) appendTerminalLog(termID string, source string, line string) {
 	}
 }
 
+func (a *App) updateTerminalLiveLine(termID string, source string, line string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	term, ok := a.terminals[termID]
+	if !ok {
+		return
+	}
+	content := "[live] " + line
+	if len(term.Logs) > 0 {
+		last := &term.Logs[len(term.Logs)-1]
+		if last.Source == source && strings.HasPrefix(last.Line, "[live] ") {
+			last.Timestamp = time.Now().Format("15:04:05")
+			last.Line = content
+			return
+		}
+	}
+	term.Logs = append(term.Logs, TerminalEntry{
+		Timestamp: time.Now().Format("15:04:05"),
+		Source:    source,
+		Line:      content,
+	})
+	if len(term.Logs) > 800 {
+		term.Logs = term.Logs[len(term.Logs)-800:]
+	}
+}
+
+func (a *App) finalizeTerminalLiveLine(termID string, source string, line string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	term, ok := a.terminals[termID]
+	if !ok {
+		return
+	}
+	if len(term.Logs) > 0 {
+		last := &term.Logs[len(term.Logs)-1]
+		if last.Source == source && strings.HasPrefix(last.Line, "[live] ") {
+			last.Timestamp = time.Now().Format("15:04:05")
+			last.Line = line
+			return
+		}
+	}
+	term.Logs = append(term.Logs, TerminalEntry{
+		Timestamp: time.Now().Format("15:04:05"),
+		Source:    source,
+		Line:      line,
+	})
+	if len(term.Logs) > 800 {
+		term.Logs = term.Logs[len(term.Logs)-800:]
+	}
+}
+
 func (a *App) appendSystemLog(line string) {
 	a.ensureDefaultLocalTerminal()
 	a.appendTerminalLog("local-default", "system", line)
 }
 
+func (a *App) emitTerminalStream(termID string, source string, raw []byte) {
+	if a.ctx == nil || len(raw) == 0 {
+		return
+	}
+	payload := TerminalStreamPayload{
+		ID:      termID,
+		Source:  source,
+		DataB64: base64.StdEncoding.EncodeToString(raw),
+	}
+	wruntime.EventsEmit(a.ctx, "terminal:stream", payload)
+}
+
 func (a *App) streamReader(termID string, source string, reader io.Reader) {
-	buf := bufio.NewReader(reader)
+	buf := bufio.NewReaderSize(reader, 4096)
+	chunk := make([]byte, 2048)
+	lineBytes := make([]byte, 0, 1024)
+	livePending := false
+	lastLiveText := ""
+	crPending := false
+
+	flushLine := func(final bool) {
+		if len(lineBytes) == 0 {
+			if final && livePending {
+				a.finalizeTerminalLiveLine(termID, source, lastLiveText)
+				livePending = false
+				lastLiveText = ""
+			}
+			return
+		}
+		text := sanitizeTerminalText(decodeOutput(lineBytes))
+		if strings.TrimSpace(text) != "" {
+			if final {
+				a.finalizeTerminalLiveLine(termID, source, text)
+				livePending = false
+				lastLiveText = ""
+			} else {
+				a.updateTerminalLiveLine(termID, source, text)
+				livePending = true
+				lastLiveText = text
+			}
+		}
+		lineBytes = lineBytes[:0]
+	}
+
 	for {
-		line, err := buf.ReadBytes('\n')
-		if len(line) > 0 {
-			text := strings.TrimRight(decodeOutput(line), "\r\n")
-			if text != "" {
-				a.appendTerminalLog(termID, source, text)
+		n, err := buf.Read(chunk)
+		if n > 0 {
+			data := chunk[:n]
+			a.emitTerminalStream(termID, source, data)
+			for _, b := range data {
+				switch b {
+				case '\r':
+					// Carriage return usually means overwrite current line content.
+					flushLine(false)
+					crPending = true
+				case '\n':
+					flushLine(true)
+					crPending = false
+				default:
+					if crPending {
+						// We saw a standalone \r overwrite and then new data starts.
+						crPending = false
+					}
+					lineBytes = append(lineBytes, b)
+					if len(lineBytes) >= 8192 {
+						flushLine(true)
+					}
+				}
 			}
 		}
 		if err != nil {
 			if err != io.EOF {
 				a.appendTerminalLog(termID, "system", fmt.Sprintf("stream read error: %v", err))
 			}
+			flushLine(true)
 			return
 		}
 	}
@@ -542,6 +699,48 @@ func (a *App) startLocalShell(termID string) error {
 	setWindowsHidden(cmd)
 	cmd.Dir = a.repoRoot
 
+	tty, err := pty.Start(cmd)
+	if err != nil {
+		return a.startLocalShellWithPipes(termID, cmd)
+	}
+
+	a.mu.Lock()
+	term, ok = a.terminals[termID]
+	if ok {
+		term.Cmd = cmd
+		term.Stdin = tty
+		term.LocalPTY = true
+		term.Info.Connected = true
+	}
+	a.mu.Unlock()
+
+	go a.streamReader(termID, "local", tty)
+	go func() {
+		waitErr := cmd.Wait()
+		if waitErr != nil {
+			a.appendTerminalLog(termID, "system", "local shell closed: "+waitErr.Error())
+		} else {
+			a.appendTerminalLog(termID, "system", "local shell closed")
+		}
+		a.mu.Lock()
+		if t, exists := a.terminals[termID]; exists {
+			t.Info.Connected = false
+			t.Stdin = nil
+			t.Cmd = nil
+			t.LocalPTY = false
+		}
+		a.mu.Unlock()
+		_ = tty.Close()
+	}()
+
+	if runtime.GOOS == "windows" {
+		_, _ = io.WriteString(tty, "$OutputEncoding=[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new(); chcp 65001 > $null\r\n")
+	}
+	a.appendTerminalLog(termID, "system", "local shell mode: pty")
+	return nil
+}
+
+func (a *App) startLocalShellWithPipes(termID string, cmd *exec.Cmd) error {
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return err
@@ -554,16 +753,16 @@ func (a *App) startLocalShell(termID string) error {
 	if err != nil {
 		return err
 	}
-
 	if err := cmd.Start(); err != nil {
 		return err
 	}
 
 	a.mu.Lock()
-	term, ok = a.terminals[termID]
+	term, ok := a.terminals[termID]
 	if ok {
 		term.Cmd = cmd
 		term.Stdin = stdin
+		term.LocalPTY = false
 		term.Info.Connected = true
 	}
 	a.mu.Unlock()
@@ -571,9 +770,9 @@ func (a *App) startLocalShell(termID string) error {
 	go a.streamReader(termID, "local", stdout)
 	go a.streamReader(termID, "local", stderr)
 	go func() {
-		err := cmd.Wait()
-		if err != nil {
-			a.appendTerminalLog(termID, "system", "local shell closed: "+err.Error())
+		waitErr := cmd.Wait()
+		if waitErr != nil {
+			a.appendTerminalLog(termID, "system", "local shell closed: "+waitErr.Error())
 		} else {
 			a.appendTerminalLog(termID, "system", "local shell closed")
 		}
@@ -582,6 +781,7 @@ func (a *App) startLocalShell(termID string) error {
 			t.Info.Connected = false
 			t.Stdin = nil
 			t.Cmd = nil
+			t.LocalPTY = false
 		}
 		a.mu.Unlock()
 	}()
@@ -589,6 +789,7 @@ func (a *App) startLocalShell(termID string) error {
 	if runtime.GOOS == "windows" {
 		_, _ = io.WriteString(stdin, "$OutputEncoding=[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new(); chcp 65001 > $null\r\n")
 	}
+	a.appendTerminalLog(termID, "system", "local shell mode: pipe")
 	return nil
 }
 
@@ -628,6 +829,11 @@ func (a *App) startSSHShell(termID string, client *ssh.Client) error {
 		_ = session.Close()
 		return err
 	}
+	// Normalize remote prompt to reduce noisy control sequences in logs.
+	_, _ = io.WriteString(stdin, "export TERM=xterm\n")
+	_, _ = io.WriteString(stdin, "if [ -n \"$ZSH_VERSION\" ]; then PROMPT='%n@%m:%~ %# '; RPROMPT=''; fi\n")
+	_, _ = io.WriteString(stdin, "if [ -n \"$BASH_VERSION\" ]; then PS1='\\u@\\h:\\w\\$ '; fi\n")
+	_, _ = io.WriteString(stdin, "stty echo 2>/dev/null || true\n")
 
 	a.mu.Lock()
 	if term, exists := a.terminals[termID]; exists {
@@ -1148,6 +1354,37 @@ func (a *App) CreateLocalTerminal(name string) (TerminalInfo, error) {
 }
 
 func (a *App) CreateSSHTerminal(host string, port int, username string, password string, name string) (TerminalInfo, error) {
+	return a.CreateSSHTerminalWithKey(host, port, username, password, "", "", name)
+}
+
+func buildSSHAuthMethods(password string, keyPath string, keyPassphrase string) ([]ssh.AuthMethod, error) {
+	methods := make([]ssh.AuthMethod, 0, 2)
+	if strings.TrimSpace(password) != "" {
+		methods = append(methods, ssh.Password(password))
+	}
+	if strings.TrimSpace(keyPath) != "" {
+		keyData, err := os.ReadFile(strings.TrimSpace(keyPath))
+		if err != nil {
+			return nil, fmt.Errorf("read key file failed: %w", err)
+		}
+		var signer ssh.Signer
+		if strings.TrimSpace(keyPassphrase) != "" {
+			signer, err = ssh.ParsePrivateKeyWithPassphrase(keyData, []byte(keyPassphrase))
+		} else {
+			signer, err = ssh.ParsePrivateKey(keyData)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("parse private key failed: %w", err)
+		}
+		methods = append(methods, ssh.PublicKeys(signer))
+	}
+	if len(methods) == 0 {
+		return nil, errors.New("password or key_path is required")
+	}
+	return methods, nil
+}
+
+func (a *App) CreateSSHTerminalWithKey(host string, port int, username string, password string, keyPath string, keyPassphrase string, name string) (TerminalInfo, error) {
 	if err := a.requirePermission("terminal.ssh"); err != nil {
 		return TerminalInfo{}, err
 	}
@@ -1160,10 +1397,14 @@ func (a *App) CreateSSHTerminal(host string, port int, username string, password
 	if strings.TrimSpace(name) == "" {
 		name = fmt.Sprintf("SSH %s@%s", username, host)
 	}
+	authMethods, err := buildSSHAuthMethods(password, keyPath, keyPassphrase)
+	if err != nil {
+		return TerminalInfo{}, err
+	}
 
 	config := &ssh.ClientConfig{
 		User:            username,
-		Auth:            []ssh.AuthMethod{ssh.Password(password)},
+		Auth:            authMethods,
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 		Timeout:         8 * time.Second,
 	}
@@ -1288,19 +1529,104 @@ func (a *App) writeToTerminal(termID string, text string) error {
 		return fmt.Errorf("ssh disconnected")
 	}
 
-	if !strings.HasSuffix(text, "\n") {
-		text += "\n"
+	lineEnding := "\n"
+	if termType == "ssh" {
+		lineEnding = "\r"
+	} else if termType == "local" && runtime.GOOS == "windows" {
+		lineEnding = "\r\n"
+	}
+	if !strings.HasSuffix(text, "\n") && !strings.HasSuffix(text, "\r") {
+		text += lineEnding
 	}
 	_, err := io.WriteString(stdin, text)
 	return err
+}
+
+func (a *App) WriteTerminalInputByID(id string, input string) string {
+	if err := a.requirePermission("terminal.execute"); err != nil {
+		return "permission_denied"
+	}
+	if input == "" {
+		return "empty"
+	}
+
+	a.mu.Lock()
+	term, ok := a.terminals[id]
+	if !ok {
+		a.mu.Unlock()
+		return "not_found"
+	}
+	stdin := term.Stdin
+	connected := term.Info.Connected
+	termType := term.Info.Type
+	a.mu.Unlock()
+
+	if !connected || stdin == nil {
+		if termType == "local" {
+			if err := a.startLocalShell(id); err != nil {
+				return "error"
+			}
+			a.mu.Lock()
+			stdin = a.terminals[id].Stdin
+			a.mu.Unlock()
+		}
+	}
+	if stdin == nil {
+		return "unavailable"
+	}
+
+	if _, err := io.WriteString(stdin, input); err != nil {
+		return "error"
+	}
+	return "sent"
+}
+
+func (a *App) ResizeTerminalByID(id string, cols int, rows int) bool {
+	if err := a.requirePermission("terminal.view"); err != nil {
+		return false
+	}
+	if cols <= 0 || rows <= 0 {
+		return false
+	}
+
+	a.mu.Lock()
+	term, ok := a.terminals[id]
+	if !ok {
+		a.mu.Unlock()
+		return false
+	}
+	stdin := term.Stdin
+	session := term.Session
+	termType := term.Info.Type
+	a.mu.Unlock()
+
+	switch termType {
+	case "local":
+		f, ok := stdin.(*os.File)
+		if !ok || f == nil {
+			return false
+		}
+		return pty.Setsize(f, &pty.Winsize{
+			Rows: uint16(rows),
+			Cols: uint16(cols),
+		}) == nil
+	case "ssh":
+		if session == nil {
+			return false
+		}
+		return session.WindowChange(rows, cols) == nil
+	default:
+		return false
+	}
 }
 
 func (a *App) ExecuteTerminalCommandByID(id string, command string) string {
 	if err := a.requirePermission("terminal.execute"); err != nil {
 		return "permission_denied"
 	}
-	cmdText := strings.TrimSpace(command)
-	if cmdText == "" {
+	cmdText := strings.ReplaceAll(command, "\r", "")
+	cmdText = strings.TrimRight(cmdText, "\n")
+	if strings.TrimSpace(cmdText) == "" {
 		return "empty command"
 	}
 

@@ -22,6 +22,10 @@ export function CreateSSHTerminal(arg1, arg2, arg3, arg4, arg5) {
   return window['go']['main']['App']['CreateSSHTerminal'](arg1, arg2, arg3, arg4, arg5);
 }
 
+export function CreateSSHTerminalWithKey(arg1, arg2, arg3, arg4, arg5, arg6, arg7) {
+  return window['go']['main']['App']['CreateSSHTerminalWithKey'](arg1, arg2, arg3, arg4, arg5, arg6, arg7);
+}
+
 export function DeleteTerminalUser(arg1) {
   return window['go']['main']['App']['DeleteTerminalUser'](arg1);
 }
@@ -58,6 +62,10 @@ export function ListTerminals() {
   return window['go']['main']['App']['ListTerminals']();
 }
 
+export function ResizeTerminalByID(arg1, arg2, arg3) {
+  return window['go']['main']['App']['ResizeTerminalByID'](arg1, arg2, arg3);
+}
+
 export function ServiceStatus() {
   return window['go']['main']['App']['ServiceStatus']();
 }
@@ -92,4 +100,8 @@ export function TerminalLogin(arg1, arg2) {
 
 export function UpsertTerminalUser(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['UpsertTerminalUser'](arg1, arg2, arg3, arg4);
+}
+
+export function WriteTerminalInputByID(arg1, arg2) {
+  return window['go']['main']['App']['WriteTerminalInputByID'](arg1, arg2);
 }

@@ -5,6 +5,9 @@
   "frontend:build": "npm run build",
   "frontend:dev:watcher": "npm run dev",
   "frontend:dev:serverUrl": "auto",
+  "windows": {
+    "icon": "build/windows/icon.ico"
+  },
   "author": {
     "name": "fogpost",
     "email": "1027265123@qq.com"

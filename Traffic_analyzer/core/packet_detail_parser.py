@@ -132,7 +132,7 @@ def _friendly_value(layer_name: str, field_name: str, value) -> str:
         return f"{ivalue} ({op})" if op else str(ivalue)
 
     if layer_name == "TCP" and field_name == "flags" and ivalue is not None:
-        return f"0x{ivalue:03x} ({_decode_tcp_flags(ivalue)})"
+        return f"{ivalue} ({_decode_tcp_flags(ivalue)})"
 
     if layer_name in {"ICMP", "ICMPv6"} and field_name == "type" and ivalue is not None:
         hint = ICMP_TYPE_HINTS.get(ivalue)

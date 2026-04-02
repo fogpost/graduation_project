@@ -1,0 +1,100 @@
+{"action":"terminal.create_ssh","detail":"ssh terminal created: 192.168.141.128:22","result":"success","role":"admin","target":"ssh-1","timestamp":"2026-03-27T17:02:17+08:00","user":"admin"}
+{"action":"terminal.execute","detail":"ls","result":"success","role":"admin","target":"ssh-1","timestamp":"2026-03-27T17:02:22+08:00","user":"admin"}
+{"action":"terminal.execute","detail":"id","result":"success","role":"admin","target":"ssh-1","timestamp":"2026-03-27T17:02:30+08:00","user":"admin"}
+{"action":"terminal.execute","detail":"sudo su","result":"success","role":"admin","target":"ssh-1","timestamp":"2026-03-27T17:03:36+08:00","user":"admin"}
+{"action":"terminal.execute","detail":"kali","result":"success","role":"admin","target":"ssh-1","timestamp":"2026-03-27T17:03:39+08:00","user":"admin"}
+{"action":"terminal.execute","detail":"klai","result":"success","role":"admin","target":"ssh-1","timestamp":"2026-03-27T17:03:41+08:00","user":"admin"}
+{"action":"terminal.execute","detail":"kali","result":"success","role":"admin","target":"ssh-1","timestamp":"2026-03-27T17:03:43+08:00","user":"admin"}
+{"action":"terminal.execute","detail":"sudo su","result":"success","role":"admin","target":"ssh-1","timestamp":"2026-03-27T17:03:46+08:00","user":"admin"}
+{"action":"terminal.execute","detail":"kali","result":"success","role":"admin","target":"ssh-1","timestamp":"2026-03-27T17:03:47+08:00","user":"admin"}
+{"action":"terminal.execute","detail":"cls","result":"success","role":"admin","target":"ssh-1","timestamp":"2026-03-27T17:03:49+08:00","user":"admin"}
+{"action":"terminal.execute","detail":"clear","result":"success","role":"admin","target":"ssh-1","timestamp":"2026-03-27T17:03:51+08:00","user":"admin"}
+{"action":"terminal.execute","detail":"clear","result":"success","role":"admin","target":"ssh-1","timestamp":"2026-03-27T17:03:54+08:00","user":"admin"}
+{"action":"terminal.create_ssh","detail":"ssh terminal created: 192.168.141.128:22","result":"success","role":"admin","target":"ssh-1","timestamp":"2026-03-27T17:31:01+08:00","user":"admin"}
+{"action":"terminal.execute","detail":"ls","result":"success","role":"admin","target":"ssh-1","timestamp":"2026-03-27T17:31:04+08:00","user":"admin"}
+{"action":"terminal.execute","detail":"id","result":"success","role":"admin","target":"ssh-1","timestamp":"2026-03-27T17:31:05+08:00","user":"admin"}
+{"action":"terminal.execute","detail":"sudo su","result":"success","role":"admin","target":"ssh-1","timestamp":"2026-03-27T17:31:09+08:00","user":"admin"}
+{"action":"terminal.execute","detail":"kali","result":"success","role":"admin","target":"ssh-1","timestamp":"2026-03-27T17:31:13+08:00","user":"admin"}
+{"action":"terminal.execute","detail":"kali","result":"success","role":"admin","target":"ssh-1","timestamp":"2026-03-27T17:31:14+08:00","user":"admin"}
+{"action":"terminal.execute","detail":"kali","result":"success","role":"admin","target":"ssh-1","timestamp":"2026-03-27T17:31:26+08:00","user":"admin"}
+{"action":"terminal.create_ssh","detail":"ssh terminal created: 192.168.141.128:22","result":"success","role":"admin","target":"ssh-1","timestamp":"2026-03-27T17:42:55+08:00","user":"admin"}
+{"action":"terminal.execute","detail":"ls","result":"success","role":"admin","target":"ssh-1","timestamp":"2026-03-27T17:42:58+08:00","user":"admin"}
+{"action":"terminal.execute","detail":"id","result":"success","role":"admin","target":"ssh-1","timestamp":"2026-03-27T17:42:59+08:00","user":"admin"}
+{"action":"terminal.execute","detail":"asd","result":"success","role":"admin","target":"ssh-1","timestamp":"2026-03-27T17:43:25+08:00","user":"admin"}
+{"action":"terminal.execute","detail":"cls","result":"success","role":"admin","target":"ssh-1","timestamp":"2026-03-27T17:43:32+08:00","user":"admin"}
+{"action":"terminal.clear","detail":"terminal logs cleared","result":"success","role":"admin","target":"ssh-1","timestamp":"2026-03-27T17:43:36+08:00","user":"admin"}
+{"action":"terminal.execute","detail":"ls","result":"success","role":"admin","target":"local-default","timestamp":"2026-03-27T17:43:44+08:00","user":"admin"}
+{"action":"terminal.execute","detail":"id","result":"success","role":"admin","target":"ssh-1","timestamp":"2026-03-27T17:44:46+08:00","user":"admin"}
+{"action":"terminal.execute","detail":"sudo su","result":"success","role":"admin","target":"ssh-1","timestamp":"2026-03-27T17:44:48+08:00","user":"admin"}
+{"action":"terminal.execute","detail":"kali","result":"success","role":"admin","target":"ssh-1","timestamp":"2026-03-27T17:44:49+08:00","user":"admin"}
+{"action":"terminal.create_local","detail":"local terminal created","result":"success","role":"admin","target":"local-2","timestamp":"2026-03-27T17:44:58+08:00","user":"admin"}
+{"action":"terminal.execute","detail":"ls","result":"success","role":"admin","target":"local-2","timestamp":"2026-03-27T17:45:02+08:00","user":"admin"}
+{"action":"terminal.execute","detail":"id","result":"success","role":"admin","target":"local-2","timestamp":"2026-03-27T17:45:04+08:00","user":"admin"}
+{"action":"terminal.execute","detail":"ls","result":"success","role":"admin","target":"local-2","timestamp":"2026-03-27T17:45:07+08:00","user":"admin"}
+{"action":"terminal.execute","detail":"dir","result":"success","role":"admin","target":"local-2","timestamp":"2026-03-27T17:45:11+08:00","user":"admin"}
+{"action":"terminal.execute","detail":"ls","result":"success","role":"admin","target":"local-2","timestamp":"2026-03-27T17:45:13+08:00","user":"admin"}
+{"action":"terminal.execute","detail":"id","result":"success","role":"admin","target":"local-default","timestamp":"2026-03-27T17:45:18+08:00","user":"admin"}
+{"action":"terminal.execute","detail":"ls","result":"success","role":"admin","target":"local-default","timestamp":"2026-03-27T17:45:20+08:00","user":"admin"}
+{"action":"terminal.execute","detail":"ls","result":"success","role":"admin","target":"local-default","timestamp":"2026-03-27T18:06:17+08:00","user":"admin"}
+{"action":"terminal.create_local","detail":"local terminal created","result":"success","role":"admin","target":"local-1","timestamp":"2026-03-27T18:06:28+08:00","user":"admin"}
+{"action":"terminal.execute","detail":"ls","result":"success","role":"admin","target":"local-1","timestamp":"2026-03-27T18:06:31+08:00","user":"admin"}
+{"action":"terminal.execute","detail":"id","result":"success","role":"admin","target":"local-1","timestamp":"2026-03-27T18:06:34+08:00","user":"admin"}
+{"action":"terminal.clear","detail":"terminal logs cleared","result":"success","role":"admin","target":"local-1","timestamp":"2026-03-27T18:06:41+08:00","user":"admin"}
+{"action":"terminal.execute","detail":"id","result":"success","role":"admin","target":"local-1","timestamp":"2026-03-27T18:06:43+08:00","user":"admin"}
+{"action":"terminal.execute","detail":"ls","result":"success","role":"admin","target":"local-1","timestamp":"2026-03-27T18:06:44+08:00","user":"admin"}
+{"action":"terminal.create_local","detail":"local terminal created","result":"success","role":"admin","target":"local-1","timestamp":"2026-03-27T18:14:36+08:00","user":"admin"}
+{"action":"terminal.execute","detail":"ls","result":"success","role":"admin","target":"local-1","timestamp":"2026-03-27T18:14:40+08:00","user":"admin"}
+{"action":"terminal.execute","detail":"id","result":"success","role":"admin","target":"local-1","timestamp":"2026-03-27T18:14:45+08:00","user":"admin"}
+{"action":"terminal.execute","detail":"cls","result":"success","role":"admin","target":"local-1","timestamp":"2026-03-27T18:14:50+08:00","user":"admin"}
+{"action":"terminal.execute","detail":"clear","result":"success","role":"admin","target":"local-1","timestamp":"2026-03-27T18:14:51+08:00","user":"admin"}
+{"action":"terminal.create_ssh","detail":"ssh terminal created: 192.168.141.128:22","result":"success","role":"admin","target":"ssh-2","timestamp":"2026-03-27T18:15:24+08:00","user":"admin"}
+{"action":"terminal.execute","detail":"id","result":"success","role":"admin","target":"ssh-2","timestamp":"2026-03-27T18:15:28+08:00","user":"admin"}
+{"action":"terminal.execute","detail":"clear","result":"success","role":"admin","target":"ssh-2","timestamp":"2026-03-27T18:15:33+08:00","user":"admin"}
+{"action":"terminal.clear","detail":"terminal logs cleared","result":"success","role":"admin","target":"ssh-2","timestamp":"2026-03-27T18:15:36+08:00","user":"admin"}
+{"action":"terminal.execute","detail":"sudo su","result":"success","role":"admin","target":"ssh-2","timestamp":"2026-03-27T18:15:39+08:00","user":"admin"}
+{"action":"terminal.execute","detail":"kali","result":"success","role":"admin","target":"ssh-2","timestamp":"2026-03-27T18:15:46+08:00","user":"admin"}
+{"action":"terminal.execute","detail":"kali","result":"success","role":"admin","target":"ssh-2","timestamp":"2026-03-27T18:15:48+08:00","user":"admin"}
+{"action":"terminal.execute","detail":"ping 127.0.0.1","result":"success","role":"admin","target":"ssh-2","timestamp":"2026-03-27T18:16:00+08:00","user":"admin"}
+{"action":"terminal.execute","detail":"ping 127.0.0.1","result":"success","role":"admin","target":"ssh-2","timestamp":"2026-03-27T18:16:20+08:00","user":"admin"}
+{"action":"terminal.execute","detail":"c","result":"success","role":"admin","target":"ssh-2","timestamp":"2026-03-27T18:16:38+08:00","user":"admin"}
+{"action":"terminal.create_ssh","detail":"ssh terminal created: 192.168.141.128:22","result":"success","role":"admin","target":"ssh-1","timestamp":"2026-03-27T18:26:00+08:00","user":"admin"}
+{"action":"terminal.execute","detail":"ls","result":"success","role":"admin","target":"ssh-1","timestamp":"2026-03-27T18:26:08+08:00","user":"admin"}
+{"action":"terminal.execute","detail":"id","result":"success","role":"admin","target":"ssh-1","timestamp":"2026-03-27T18:26:11+08:00","user":"admin"}
+{"action":"terminal.execute","detail":"clear","result":"success","role":"admin","target":"ssh-1","timestamp":"2026-03-27T18:26:15+08:00","user":"admin"}
+{"action":"terminal.execute","detail":"cls","result":"success","role":"admin","target":"ssh-1","timestamp":"2026-03-27T18:26:17+08:00","user":"admin"}
+{"action":"terminal.execute","detail":"clear","result":"success","role":"admin","target":"ssh-1","timestamp":"2026-03-27T18:26:19+08:00","user":"admin"}
+{"action":"terminal.execute","detail":"sudo su","result":"success","role":"admin","target":"ssh-1","timestamp":"2026-03-27T18:26:28+08:00","user":"admin"}
+{"action":"terminal.execute","detail":"kali","result":"success","role":"admin","target":"ssh-1","timestamp":"2026-03-27T18:26:31+08:00","user":"admin"}
+{"action":"terminal.execute","detail":"kali","result":"success","role":"admin","target":"ssh-1","timestamp":"2026-03-27T18:26:32+08:00","user":"admin"}
+{"action":"terminal.execute","detail":"ls","result":"success","role":"admin","target":"ssh-1","timestamp":"2026-03-27T18:26:34+08:00","user":"admin"}
+{"action":"terminal.execute","detail":"ping 127.0.0.1","result":"success","role":"admin","target":"ssh-1","timestamp":"2026-03-27T18:26:42+08:00","user":"admin"}
+{"action":"terminal.execute","detail":"unsupported","result":"failed","role":"admin","target":"local-default","timestamp":"2026-03-27T18:27:33+08:00","user":"admin"}
+{"action":"terminal.create_ssh","detail":"ssh terminal created: 192.168.141.128:22","result":"success","role":"admin","target":"ssh-7","timestamp":"2026-03-28T15:54:37+08:00","user":"admin"}
+{"action":"terminal.close","detail":"terminal closed","result":"success","role":"admin","target":"local-5","timestamp":"2026-03-28T15:54:48+08:00","user":"admin"}
+{"action":"terminal.close","detail":"terminal closed","result":"success","role":"admin","target":"local-1","timestamp":"2026-03-28T15:54:49+08:00","user":"admin"}
+{"action":"terminal.close","detail":"terminal closed","result":"success","role":"admin","target":"local-2","timestamp":"2026-03-28T15:54:50+08:00","user":"admin"}
+{"action":"terminal.close","detail":"terminal closed","result":"success","role":"admin","target":"local-3","timestamp":"2026-03-28T15:54:50+08:00","user":"admin"}
+{"action":"terminal.close","detail":"terminal closed","result":"success","role":"admin","target":"local-4","timestamp":"2026-03-28T15:55:35+08:00","user":"admin"}
+{"action":"terminal.close","detail":"terminal closed","result":"success","role":"admin","target":"local-6","timestamp":"2026-03-28T15:55:36+08:00","user":"admin"}
+{"action":"terminal.create_ssh","detail":"ssh terminal created: 192.168.141.128:22","result":"success","role":"admin","target":"ssh-9","timestamp":"2026-03-28T15:56:17+08:00","user":"admin"}
+{"action":"terminal.create_ssh","detail":"ssh terminal created: 192.168.141.128:22","result":"success","role":"admin","target":"ssh-9","timestamp":"2026-03-28T16:09:44+08:00","user":"admin"}
+{"action":"terminal.close","detail":"terminal closed","result":"success","role":"admin","target":"local-1","timestamp":"2026-03-28T16:09:50+08:00","user":"admin"}
+{"action":"terminal.close","detail":"terminal closed","result":"success","role":"admin","target":"local-2","timestamp":"2026-03-28T16:09:51+08:00","user":"admin"}
+{"action":"terminal.close","detail":"terminal closed","result":"success","role":"admin","target":"local-3","timestamp":"2026-03-28T16:09:51+08:00","user":"admin"}
+{"action":"terminal.close","detail":"terminal closed","result":"success","role":"admin","target":"local-4","timestamp":"2026-03-28T16:09:52+08:00","user":"admin"}
+{"action":"terminal.close","detail":"terminal closed","result":"success","role":"admin","target":"local-5","timestamp":"2026-03-28T16:09:52+08:00","user":"admin"}
+{"action":"terminal.close","detail":"terminal closed","result":"success","role":"admin","target":"local-6","timestamp":"2026-03-28T16:09:52+08:00","user":"admin"}
+{"action":"terminal.close","detail":"terminal closed","result":"success","role":"admin","target":"local-7","timestamp":"2026-03-28T16:09:53+08:00","user":"admin"}
+{"action":"terminal.close","detail":"terminal closed","result":"success","role":"admin","target":"local-2","timestamp":"2026-03-28T16:21:20+08:00","user":"admin"}
+{"action":"terminal.create_ssh","detail":"ssh terminal created: 192.168.141.128:22","result":"success","role":"admin","target":"ssh-4","timestamp":"2026-03-28T16:22:59+08:00","user":"admin"}
+{"action":"terminal.create_local","detail":"local terminal created","result":"success","role":"admin","target":"local-1","timestamp":"2026-03-28T16:25:44+08:00","user":"admin"}
+{"action":"terminal.create_ssh","detail":"ssh terminal created: 192.168.141.128:22","result":"success","role":"admin","target":"ssh-2","timestamp":"2026-03-28T16:25:59+08:00","user":"admin"}
+{"action":"terminal.create_local","detail":"local terminal created","result":"success","role":"admin","target":"local-1","timestamp":"2026-03-28T16:29:44+08:00","user":"admin"}
+{"action":"terminal.create_local","detail":"local terminal created","result":"success","role":"admin","target":"local-1","timestamp":"2026-03-28T16:41:09+08:00","user":"admin"}
+{"action":"terminal.create_ssh","detail":"ssh terminal created: 192.168.141.128:22","result":"success","role":"admin","target":"ssh-2","timestamp":"2026-03-28T16:41:40+08:00","user":"admin"}
+{"action":"terminal.create_ssh","detail":"ssh terminal created: 192.168.141.128:22","result":"success","role":"admin","target":"ssh-1","timestamp":"2026-03-28T17:02:47+08:00","user":"admin"}
+{"action":"terminal.create_local","detail":"local terminal created","result":"success","role":"admin","target":"local-2","timestamp":"2026-03-28T17:03:04+08:00","user":"admin"}
+{"action":"terminal.create_ssh","detail":"ssh terminal created: 192.168.141.128:22","result":"success","role":"admin","target":"ssh-3","timestamp":"2026-03-28T17:06:15+08:00","user":"admin"}
+{"action":"terminal.create_local","detail":"local terminal created","result":"success","role":"admin","target":"local-4","timestamp":"2026-03-28T17:06:29+08:00","user":"admin"}
+{"action":"terminal.create_local","detail":"local terminal created","result":"success","role":"admin","target":"local-1","timestamp":"2026-03-28T17:11:30+08:00","user":"admin"}
+{"action":"terminal.create_ssh","detail":"ssh terminal created: 192.168.141.128:22","result":"success","role":"admin","target":"ssh-1","timestamp":"2026-03-28T17:15:22+08:00","user":"admin"}

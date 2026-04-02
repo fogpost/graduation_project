@@ -3,6 +3,7 @@ module traffic_analyzer/wails_shell
 go 1.22.0
 
 require (
+	github.com/creack/pty v1.1.24
 	github.com/wailsapp/wails/v2 v2.11.0
 	golang.org/x/crypto v0.33.0
 	golang.org/x/text v0.22.0
